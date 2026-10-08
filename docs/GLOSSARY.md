@@ -42,6 +42,12 @@ Partir el contexto de la atención de decode en trozos procesados por bloques di
 **Fusión de kernels**:
 Juntar varias ops lógicas (p. ej. suma residual + RMSNorm) en un solo kernel para no ir y volver a HBM entre ellas.
 
+**torch.compile / Inductor**:
+Compilador de PyTorch que vLLM usa por defecto. Inductor genera kernels Triton que fusionan ops elementwise (norms, residual, activaciones); por eso esos kernels no están escritos a mano en vLLM.
+
+**CUDA graphs**:
+Grabar una secuencia de lanzamientos de kernels una vez y reproducirla entera con una sola llamada. vLLM lo usa en decode para recortar el overhead de lanzamiento.
+
 ## Rendimiento
 
 **Kernel**:

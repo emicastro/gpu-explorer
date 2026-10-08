@@ -102,6 +102,11 @@ Notas:
 ### D6 — Motor de referencia: vLLM [cerrada]
 
 - **Por qué:** es el motor open source más adoptado (junto a SGLang y TensorRT-LLM) y su código es legible. La secuencia de kernels, las fusiones y los backends de atención se derivan de su implementación de Qwen3 en una **versión fijada**.
+- **Versión fijada: vLLM v0.31.0** (2026-10-05). Hallazgos en el código de esa versión:
+  - **Atención en H100:** backend `FLASH_ATTN` (primero en la prioridad de Hopper; FlashInfer es el segundo) con **FlashAttention 3**.
+  - **Compilación:** nivel por defecto `-O2`: torch.compile (Inductor) + CUDA graphs `FULL_AND_PIECEWISE`. Con Inductor, los custom ops quedan en `none` por defecto: RMSNorm, suma residual, SiLU·mul, QK-norm y RoPE se escriben en PyTorch y **Inductor genera kernels Triton fusionados**. La agrupación exacta no está escrita a mano en el código; sale del compilador.
+  - **Fusiones con nombre propio:** RoPE + escritura al KV y QK-norm + RoPE + KV existen pero en v0.31.0 solo se activan en ROCm. En CUDA, la escritura al KV es un kernel aparte (`reshape_and_cache_flash`).
+  - **Estructura del modelo (`qwen3.py`):** QKV en una sola GEMM, O aparte, gate+up en una sola GEMM, RMSNorm con suma residual fusionada en la API.
 - **Revisar si:** cambia el motor dominante en la industria, o la versión fijada queda muy atrás de lo que se usa.
 
 ### D7 — Ops lógicas y kernels, en dos capas [cerrada]
@@ -112,7 +117,7 @@ Notas:
 
 ### D8 — Precisión: pesos y KV como perillas separadas [cerrada]
 
-- **Pesos:** BF16 / FP8. FP8 como lo corre vLLM en H100 (presumiblemente W8A8; verificar en la versión fijada). W8A16 se muestra como variante explicativa:
+- **Pesos:** BF16 / FP8. FP8 como lo corre vLLM en H100: **W8A8** (confirmado en v0.31.0: GEMMs CUTLASS `scaled_mm` para sm90 con las activaciones cuantizadas a FP8 en tiempo de ejecución). Ojo: el checkpoint oficial `Qwen3-8B-FP8` usa cuantización por bloques de 128, que va por otro camino de kernels que el FP8 por tensor (verificar cuál). W8A16 se muestra como variante explicativa:
   - **W8A16:** pesos en FP8 (mitad de bytes desde HBM), multiplicación en BF16. Gana en decode, no en prefill. En el roofline: el punto se mueve a la derecha.
   - **W8A8:** pesos y activaciones en FP8, multiplicación en FP8. Ahorra bytes **y** duplica el pico de cómputo. En el roofline: el punto se mueve a la derecha y el techo sube.
 - **KV cache:** BF16 / FP8. Es la palanca principal en contextos largos.
@@ -139,6 +144,7 @@ Notas:
 - **Solo escritorio.** Mouse y teclado. Pantallas chicas muestran un aviso.
 - **Sitio en inglés.** Este brief y el glosario de trabajo quedan en español.
 - Sitio estático, sin backend.
+- **Propiedad intelectual:** toda la geometría 3D es propia. No se reutilizan imágenes de NVIDIA (whitepaper, die shots, renders) ni de las referencias visuales; se usan solo como guía. No se sugiere aval de NVIDIA.
 
 ### D13 — Estilo visual [cerrada]
 
@@ -273,7 +279,12 @@ Ops lógicas:
 
 Fuera del loop: lookup de embeddings, RMSNorm final, LM head (GEMM `h × V`), sampling.
 
-Kernels: el perfil de fusión de vLLM (versión fijada) agrupa estas ops. Ejemplos esperados, **a verificar en el código**: suma residual + RMSNorm fusionadas, RoPE + escritura al KV, SiLU·mul en un kernel propio, QKV en una sola GEMM, CUDA graphs en decode.
+Kernels: el perfil de fusión de vLLM v0.31.0 en H100 agrupa estas ops (ver D6). Lo que se sabe del código:
+
+- GEMMs: QKV (1), O (1), gate+up (1), down (1) por capa. BF16 → cuBLAS vía PyTorch; FP8 → CUTLASS.
+- Atención: FlashAttention 3; la escritura al KV es un kernel aparte.
+- Elementwise (RMSNorm + residual, QK-norm, RoPE, SiLU·mul): kernels Triton generados por Inductor. **La agrupación exacta requiere una traza real** (ver preguntas abiertas). Hasta tenerla, el perfil de fusión se marca `simplified`.
+- Decode corre con CUDA graphs: el overhead de lanzamiento por kernel es bajo pero no cero.
 
 ### 6.6 Salida del núcleo
 
@@ -311,12 +322,16 @@ type StepPlan = {
 - Intensidad aritmética = `FLOPs / bytes`. Se compara con el ridge point.
 - Cota inferior = `max(FLOPs / pico, bytes / ancho_de_banda)`.
 - Realista = `max(FLOPs / (η_c · pico), bytes / (η_m · ancho_de_banda)) + t_overhead`, con `η` y `t_overhead` calibrados contra benchmarks públicos (`estimated`).
+  - **Calibración en dos capas:** primero microbenchmarks de hardware (más robustos), después benchmarks de punta a punta como chequeo de orden de magnitud.
+  - Puntos de partida: `η_m` ≈ 0.93 (STREAM triad en H100: ~3.12 TB/s de 3.35, Kempner Institute). `η_c` depende de la forma: GEMMs grandes y cuadradas llegan a ~70–93 % del pico en cuBLAS; formas típicas de LLM, ~500–560 TFLOPS (~50–57 %). Fuentes heterogéneas en reloj, dtype y versión: tratar como rango, no como valor.
 - KV cache por token = `2 · capas · n_kv · d · bytes_kv`.
 
 ### 7.2 Tiling y ondas
 
-- GEMM: `bloques = ⌈M/BM⌉ · ⌈N/BN⌉ · split_k`. Tamaños de tile representativos de los kernels que usa vLLM en Hopper (`simplified`).
-- Atención de decode: `bloques = B · cabezas · splits` (paralelización por cabeza Q o KV según el kernel; verificar).
+- GEMM: `bloques = ⌈M/BM⌉ · ⌈N/BN⌉ · split_k`.
+  - **FP8 (CUTLASS):** los tiles son públicos. `scaled_mm_sm90_fp8_dispatch.cuh` elige la configuración según M, N y K; p. ej. `128×128×128` por defecto, `64×128×128` para M ≤ 128, `64×16×256` para M chicos con N chico, `256×128×128` para M y K grandes. `documented` para la versión fijada.
+  - **BF16 (cuBLAS):** los tiles los elige la heurística cerrada de cuBLAS; no hay fuente pública. Usar tiles representativos de Hopper (p. ej. los de CUTLASS) y marcar `simplified`.
+- Atención de decode: `bloques = B · cabezas · splits`. FA3 paraleliza por request y cabeza KV (agrupando las Q de GQA) y elige `splits` (split-KV) con una heurística propia: leer la heurística de FA3 en la versión que trae vLLM v0.31.0.
 - `ondas = ⌈bloques / (SMs · bloques_por_SM)⌉`; `eficiencia_de_onda = bloques / (ondas · SMs · bloques_por_SM)`.
 - `bloques_por_SM` según shared memory, registros y threads por bloque contra los límites del SM.
 
@@ -352,6 +367,8 @@ Tests de cordura obligatorios en el núcleo:
 Además:
 
 - Cruzar los techos con benchmarks públicos de vLLM en H100: los reales deben quedar por debajo de la cota inferior y cerca del modo realista.
+  - Dato disponible: issue vllm#25915 (H100, `vllm bench throughput`, entrada 1024 / salida 2048): Qwen3-8B BF16 ~4.5–5.4k tok/s de salida y FP8 casi igual (v0.8.5 y v0.10.2). Útil como caso: a batch alto, FP8 de pesos casi no ayuda.
+  - No se encontró un número público confiable de decode a batch 1 de Qwen3-8B con vLLM en H100. Candidato a revisar: SemiAnalysis InferenceX.
 - Cruzar resultados por capa con LLM-Viewer.
 - Cada número de la UI muestra confianza y fuente.
 
@@ -383,11 +400,12 @@ Entrenamiento, simulación por ciclos, múltiples GPUs, cuantización por debajo
 
 ## 12. Preguntas abiertas
 
-- ¿Qué versión de vLLM se fija? ¿Qué backend de atención usa por defecto en H100 en esa versión?
-- ¿Qué tamaños de tile usan los kernels de GEMM de vLLM en Hopper para decode y prefill? ¿Hay fuente pública?
-- ¿Qué benchmarks públicos de vLLM en H100 con Qwen3-8B sirven para calibrar el modo realista?
-- ¿Qué fuentes públicas alcanzan para la disposición física del die de GH100 (render oficial de NVIDIA, die shots)?
-- ¿Dónde se hospeda el sitio y con qué licencia?
+- **Traza de kernels:** la agrupación de los kernels elementwise sale de Inductor y no se puede leer del código. ¿Se hace una corrida de perfilado (nsys) de vLLM v0.31.0 con Qwen3-8B? La agrupación de Inductor depende poco de la arquitectura, así que una GPU NVIDIA barata alcanzaría para eso; las GEMMs y la atención sí son específicas de Hopper. Alternativa: buscar trazas públicas, o derivarla a mano y marcarla `simplified`.
+- **Checkpoint FP8:** ¿por qué camino de kernels va el FP8 por bloques de `Qwen3-8B-FP8` en v0.31.0 (CUTLASS blockwise, DeepGEMM, Triton)? Define los tiles en FP8.
+- **Split-KV de FA3:** leer la heurística de `num_splits` en la versión de FA3 que trae vLLM v0.31.0.
+- **Benchmark de batch 1:** falta un número público de decode a batch 1 de Qwen3-8B en H100 con vLLM. Revisar SemiAnalysis InferenceX.
+- **Disposición física:** no hay floorplan público detallado de GH100 (el de TechInsights es pago). Plan: topología del diagrama de bloques del whitepaper (8 GPCs, L2, controladores) + L2 en dos particiones (Chips and Cheese) + package con el die al centro y 6 sitios de HBM (5 activos en la versión de 80 GB; verificar) a partir de fotos públicas del módulo. Todo `simplified`.
+- **Hosting y licencia:** propuesta: GitHub Pages o Cloudflare Pages; código MIT/Apache-2.0 (dual, convención de Rust) y contenido CC BY 4.0. A confirmar.
 
 ## Fuentes de partida
 
@@ -395,7 +413,9 @@ Entrenamiento, simulación por ciclos, múltiples GPUs, cuantización por debajo
 - CUDA C++ Programming Guide
 - Luo et al., "Benchmarking and Dissecting the Nvidia Hopper GPU Architecture" (2024): latencias y anchos de banda medidos
 - `config.json` oficiales: Qwen/Qwen3-8B y Qwen/Qwen3-30B-A3B en Hugging Face
-- Código de vLLM (versión a fijar): implementación de Qwen3, kernels y backends de atención
+- Código de vLLM v0.31.0: `vllm/model_executor/models/qwen3.py`, `vllm/config/vllm.py` (niveles de optimización), `vllm/platforms/cuda.py` (prioridad de backends), `vllm/v1/attention/backends/fa_utils.py` (versión de FA), `csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_sm90_fp8_dispatch.cuh` (tiles FP8)
+- Calibración: Kempner Institute `nvidia-hpc-benchmarks` (STREAM en H100); NVIDIA, "New cuBLAS 12.0 Features and Matrix Multiplication Performance on NVIDIA Hopper GPUs"; issue vllm-project/vllm#25915
+- Chips and Cheese, artículos sobre H100 (L2 en dos particiones)
 - LLM-Viewer (roofline por capa), "Transformer Inference Arithmetic" (kipply)
 - Referencias visuales: "How do Graphics Cards Work? Exploring GPU Architecture" (YouTube, h9Z4oGN89MU); LearnOpenCV, "Modern GPU Architecture Explained"
 - Inspiración: LLM Visualization (Brendan Bycroft), LLM Inference Handbook (BentoML), Crusader Kings 3 (tooltips anidados)
