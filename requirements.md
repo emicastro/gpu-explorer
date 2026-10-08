@@ -299,7 +299,19 @@ Kernels: el perfil de fusión de vLLM v0.31.0 en H100 agrupa estas ops (ver D6).
 
 - GEMMs: QKV (1), O (1), gate+up (1), down (1) por capa. BF16 → cuBLAS vía PyTorch; FP8 → CUTLASS.
 - Atención: FlashAttention 3; la escritura al KV es un kernel aparte.
-- Elementwise (RMSNorm + residual, QK-norm, RoPE, SiLU·mul): kernels Triton generados por Inductor. **La agrupación exacta sale de la traza de D14.** Hasta tenerla, el perfil de fusión se marca `simplified`.
+- Elementwise: kernels Triton generados por Inductor. Agrupación medida en la traza de D14 (`data/traces/vllm-0.31.0_qwen3-8b-3layers_rtx3070/`):
+  1. suma residual de la capa anterior + RMSNorm de entrada (en la capa 0: lookup de embeddings + RMSNorm)
+  2. GEMM QKV
+  3. QK-norm + RoPE (un kernel)
+  4. escritura al KV (`reshape_and_cache_flash`)
+  5. atención con split-KV (+ kernel `combine` en decode; en decode también dos `copy_` de reordenamiento alrededor)
+  6. GEMM O
+  7. suma residual + RMSNorm post-atención
+  8. GEMM gate+up (en decode, cuBLAS usa split-K + kernel de reducción)
+  9. SiLU·mul
+  10. GEMM down
+- **El límite entre kernels no coincide con el límite entre capas:** la suma residual del final de una capa se fusiona con la RMSNorm de entrada de la siguiente. La UI lo muestra así.
+- Fuera del forward: RMSNorm final (fusionada con la última suma residual), gather del último token, LM head, sampling. Al inicio de cada paso, ~8 kernels chicos de preparación de inputs.
 - Decode corre con CUDA graphs: el overhead de lanzamiento por kernel es bajo pero no cero.
 
 ### 6.6 Salida del núcleo
