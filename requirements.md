@@ -153,6 +153,19 @@ Notas:
 - **Diferencias con las referencias:** ellas usan GA102 (gaming: RT cores, GDDR6X). H100 no tiene RT cores, usa HBM en el mismo package, tiene TMA y tensor cores más grandes. Ninguna de las dos muestra flujo de datos real ni números; eso es lo nuevo.
 - **Revisar si:** la abstracción confunde más de lo que aclara.
 
+### D14 — Traza de kernels: una corrida de perfilado propia [cerrada]
+
+- La agrupación de los kernels elementwise en vLLM v0.31.0 la genera Inductor y no se puede leer del código. Se obtiene con **una corrida de perfilado (Nsight Systems)** de vLLM v0.31.0 con Qwen3-8B en una GPU NVIDIA barata alquilada.
+- **Qué se toma de esa traza:** nombres y orden de los kernels por capa, qué ops fusiona cada uno, y cuántos kernels hay por paso de decode y de prefill.
+- **Qué no se toma:** tiempos, tiles de GEMM ni kernels de atención, que dependen de la arquitectura. Para H100 siguen saliendo del código (D6), de las fuentes públicas y del modelo analítico.
+- La traza se guarda en el repo como dato de referencia, con la GPU, la versión de vLLM y de CUDA, y los comandos usados.
+- **Revisar si:** la traza muestra diferencias de agrupación que dependen de la arquitectura (p. ej. kernels específicos de sm90). En ese caso hace falta una corrida corta en H100.
+
+### D15 — Hosting y licencia [cerrada]
+
+- Sitio estático en GitHub Pages o Cloudflare Pages.
+- Código: MIT o Apache-2.0, a elección del usuario (licencia dual, convención de Rust). Contenido (textos, glosario, geometría 3D propia): CC BY 4.0.
+
 ---
 
 ## 4. Experiencia 3D
@@ -283,7 +296,7 @@ Kernels: el perfil de fusión de vLLM v0.31.0 en H100 agrupa estas ops (ver D6).
 
 - GEMMs: QKV (1), O (1), gate+up (1), down (1) por capa. BF16 → cuBLAS vía PyTorch; FP8 → CUTLASS.
 - Atención: FlashAttention 3; la escritura al KV es un kernel aparte.
-- Elementwise (RMSNorm + residual, QK-norm, RoPE, SiLU·mul): kernels Triton generados por Inductor. **La agrupación exacta requiere una traza real** (ver preguntas abiertas). Hasta tenerla, el perfil de fusión se marca `simplified`.
+- Elementwise (RMSNorm + residual, QK-norm, RoPE, SiLU·mul): kernels Triton generados por Inductor. **La agrupación exacta sale de la traza de D14.** Hasta tenerla, el perfil de fusión se marca `simplified`.
 - Decode corre con CUDA graphs: el overhead de lanzamiento por kernel es bajo pero no cero.
 
 ### 6.6 Salida del núcleo
@@ -400,12 +413,10 @@ Entrenamiento, simulación por ciclos, múltiples GPUs, cuantización por debajo
 
 ## 12. Preguntas abiertas
 
-- **Traza de kernels:** la agrupación de los kernels elementwise sale de Inductor y no se puede leer del código. ¿Se hace una corrida de perfilado (nsys) de vLLM v0.31.0 con Qwen3-8B? La agrupación de Inductor depende poco de la arquitectura, así que una GPU NVIDIA barata alcanzaría para eso; las GEMMs y la atención sí son específicas de Hopper. Alternativa: buscar trazas públicas, o derivarla a mano y marcarla `simplified`.
 - **Checkpoint FP8:** ¿por qué camino de kernels va el FP8 por bloques de `Qwen3-8B-FP8` en v0.31.0 (CUTLASS blockwise, DeepGEMM, Triton)? Define los tiles en FP8.
 - **Split-KV de FA3:** leer la heurística de `num_splits` en la versión de FA3 que trae vLLM v0.31.0.
 - **Benchmark de batch 1:** falta un número público de decode a batch 1 de Qwen3-8B en H100 con vLLM. Revisar SemiAnalysis InferenceX.
 - **Disposición física:** no hay floorplan público detallado de GH100 (el de TechInsights es pago). Plan: topología del diagrama de bloques del whitepaper (8 GPCs, L2, controladores) + L2 en dos particiones (Chips and Cheese) + package con el die al centro y 6 sitios de HBM (5 activos en la versión de 80 GB; verificar) a partir de fotos públicas del módulo. Todo `simplified`.
-- **Hosting y licencia:** propuesta: GitHub Pages o Cloudflare Pages; código MIT/Apache-2.0 (dual, convención de Rust) y contenido CC BY 4.0. A confirmar.
 
 ## Fuentes de partida
 
