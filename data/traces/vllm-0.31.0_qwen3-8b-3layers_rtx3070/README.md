@@ -16,6 +16,8 @@ Referencia para el perfil de fusión de vLLM (decisión D14 de `requirements.md`
 
 ## Cómo se generó
 
+Guía completa para reproducirlo: [`docs/profiling.md`](../../../docs/profiling.md). Resumen:
+
 ```sh
 uv venv --python 3.12 venv
 VIRTUAL_ENV=venv uv pip install vllm==0.31.0
