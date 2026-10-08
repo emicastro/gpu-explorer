@@ -153,13 +153,16 @@ Notas:
 - **Diferencias con las referencias:** ellas usan GA102 (gaming: RT cores, GDDR6X). H100 no tiene RT cores, usa HBM en el mismo package, tiene TMA y tensor cores más grandes. Ninguna de las dos muestra flujo de datos real ni números; eso es lo nuevo.
 - **Revisar si:** la abstracción confunde más de lo que aclara.
 
-### D14 — Traza de kernels: una corrida de perfilado propia [cerrada]
+### D14 — Traza de kernels: perfilado local en una RTX 3070, sin costo [cerrada]
 
-- La agrupación de los kernels elementwise en vLLM v0.31.0 la genera Inductor y no se puede leer del código. Se obtiene con **una corrida de perfilado (Nsight Systems)** de vLLM v0.31.0 con Qwen3-8B en una GPU NVIDIA barata alquilada.
-- **Qué se toma de esa traza:** nombres y orden de los kernels por capa, qué ops fusiona cada uno, y cuántos kernels hay por paso de decode y de prefill.
-- **Qué no se toma:** tiempos, tiles de GEMM ni kernels de atención, que dependen de la arquitectura. Para H100 siguen saliendo del código (D6), de las fuentes públicas y del modelo analítico.
-- La traza se guarda en el repo como dato de referencia, con la GPU, la versión de vLLM y de CUDA, y los comandos usados.
-- **Revisar si:** la traza muestra diferencias de agrupación que dependen de la arquitectura (p. ej. kernels específicos de sm90). En ese caso hace falta una corrida corta en H100.
+- La agrupación de los kernels elementwise en vLLM v0.31.0 la genera Inductor y no se puede leer del código. Se obtiene perfilando localmente en la GPU del autor (RTX 3070, 8 GB, Ampere sm86), sin alquilar hardware.
+- **Cómo entra en 8 GB:** el modelo usa las dimensiones reales de Qwen3-8B pero solo 3 capas (`--hf-overrides '{"num_hidden_layers": 3}'`) y pesos aleatorios (`--load-format dummy`), unos 3.6 GB en BF16. Los pesos no cambian qué kernels corren. Hacen falta al menos 2 capas, porque la capa 0 no fusiona la suma residual: la tercera es una capa "típica".
+- **Herramientas, gratis:** el profiler de PyTorch integrado en vLLM (`--profiler-config`, trazas para Perfetto) y, como contraste, el código Triton que genera Inductor (caché de compilación de vLLM o `TORCH_LOGS=output_code`). Nsight Systems es opcional. Se perfila sin CUDA graphs (`cudagraph_mode: NONE`), que no cambian qué kernels corren pero ocultan los kernels individuales en la traza.
+- **Qué se toma de la traza:** nombres y orden de los kernels por capa, qué ops fusiona cada uno, y cuántos kernels hay por paso de decode y de prefill.
+- **Qué no se toma, porque en Ampere es distinto:** tiempos, tiles de GEMM (cuBLAS elige kernels de sm86), el kernel de atención (FA2 en lugar de FA3) y todo FP8 (Ampere no tiene FP8: vLLM usa Marlin, W8A16). Para H100 eso sigue saliendo del código (D6), de fuentes públicas y del modelo analítico.
+- **Supuesto, marcado `simplified`:** la agrupación que decide Inductor no depende de la arquitectura. La configuración de cada kernel Triton puede cambiar, pero qué ops quedan juntas no debería cambiar.
+- La traza se guarda en el repo como dato de referencia, con GPU, driver, versiones de vLLM, PyTorch y CUDA, y los comandos usados.
+- **Revisar si:** aparece una traza pública de H100 que contradiga la agrupación, o si hay fondos para una corrida corta en H100.
 
 ### D15 — Hosting y licencia [cerrada]
 
