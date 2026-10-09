@@ -18,7 +18,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 ## 2. Núcleo: tipos y datos
 
-- [ ] **2.1 Unidades y `Quantity`.** Newtypes con solo las operaciones con sentido físico; `Provenance` y `Quantity`; la confianza se propaga con el peor de los insumos; derive de ts-rs detrás de la feature `ts`, exportado a `web/src/generated/`. Un test `trybuild` (o un doctest `compile_fail`) prueba que `Bytes + Flops` no compila. (R6; §3.1; ADR 0001)
+- [x] **2.1 Unidades y `Quantity`.** Newtypes con solo las operaciones con sentido físico; `Provenance` y `Quantity`; la confianza se propaga con el peor de los insumos; derive de ts-rs detrás de la feature `ts`, exportado a `web/src/generated/`. Un test `trybuild` (o un doctest `compile_fail`) prueba que `Bytes + Flops` no compila. (R6; §3.1; ADR 0001)
   Check: `cargo test -p gpuviz-core --features ts && git diff --exit-code web/src/generated && cargo clippy --all-targets --all-features -- -D warnings`
 - [ ] **2.2 Datos de H100 SXM.** `data/hardware/h100-sxm.json` (árbol completo hasta `unit`, con valores del brief D1 y sus fuentes; reparto de TPCs `simplified`; 6 sitios de HBM con 5 activos), un loader con `include_str!` y `deny_unknown_fields`. Tests: 132 SMs habilitados, 66 TPCs, 8 GPCs, 10 controladores activos; pico BF16 derivado ≈ 989 TFLOPS (±1 %); ridge ≈ 295 BF16 y ≈ 590 FP8. (R1, R8; §3.2; ADR 0002)
   Check: `cargo test -p gpuviz-core hardware`
