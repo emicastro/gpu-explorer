@@ -1,8 +1,8 @@
 # GPU Inference Explorer — Brief del proyecto
 
-> **Estado: borrador v2.** Las decisiones marcadas **[cerrada]** fueron confirmadas; el resto sigue abierto. Toda decisión incluye el motivo y una condición de "Revisar si…": si aparece evidencia en contra, se cambia la decisión y se actualiza este archivo. Ningún número de hardware o de modelo se da por bueno sin un test o una fuente que lo respalde.
+> **Estado: v2, aceptado como registro de decisiones e investigación; los requisitos de v1 están en [`requirements.md`](requirements.md).** Las decisiones marcadas **[cerrada]** fueron confirmadas; el resto sigue abierto. Toda decisión incluye el motivo y una condición de "Revisar si…": si aparece evidencia en contra, se cambia la decisión y se actualiza este archivo. Ningún número de hardware o de modelo se da por bueno sin un test o una fuente que lo respalde.
 >
-> Vocabulario: ver [`docs/GLOSSARY.md`](docs/GLOSSARY.md).
+> Vocabulario: ver [`GLOSSARY.md`](GLOSSARY.md).
 
 ---
 

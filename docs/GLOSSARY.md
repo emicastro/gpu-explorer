@@ -39,6 +39,15 @@ W = bits de los pesos, A = bits de las activaciones. W8A16 guarda pesos en FP8 p
 **Split-KV / FlashDecoding**:
 Partir el contexto de la atención de decode en trozos procesados por bloques distintos y combinar los resultados al final. Evita que pocos bloques largos dejen la mayoría de los SMs ociosos.
 
+**PackGQA**:
+Técnica de FA3: mete en un mismo tile las cabezas Q que comparten una cabeza KV, para leer ese KV una sola vez. En decode de Qwen3-8B, el kernel de atención trabaja por cabeza KV (8), no por cabeza Q (32).
+
+**FP8 por bloques / por tensor**:
+Dos formas de escalar FP8. Por tensor: una escala para todo el tensor. Por bloques: una escala por bloque (128×128 en los pesos, 1×128 en las activaciones); es lo que usa el checkpoint oficial `Qwen3-8B-FP8` y lo que muestra v1 por defecto.
+
+**swapAB**:
+Truco de GEMM para M chico (pocos tokens): intercambia los operandos para que las filas del peso llenen la dimensión grande del tile y los tokens la chica. Lo usa FlashInfer en FP8 por bloques con M < 32.
+
 **Fusión de kernels**:
 Juntar varias ops lógicas (p. ej. suma residual + RMSNorm) en un solo kernel para no ir y volver a HBM entre ellas.
 
@@ -86,3 +95,6 @@ Partir una matriz de salida en bloques (tiles); cada thread block calcula uno. D
 
 **Onda (wave)**:
 Una tanda de thread blocks que ocupa todos los SMs a la vez. Si los tiles no son múltiplo de los SMs disponibles, la última onda queda incompleta (cuantización por ondas).
+
+**Kernel persistente**:
+Kernel que lanza un bloque por SM (132) y reparte los tiles en rondas desde adentro, en lugar de lanzar un bloque por tile. FA3, DeepGEMM y FlashInfer en H100 lo son; las "ondas" pasan a ser esas rondas.

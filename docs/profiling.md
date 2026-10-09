@@ -1,6 +1,6 @@
 # Guía: perfilar los kernels de vLLM en una GPU local
 
-Paso a paso para reproducir la traza de `data/traces/vllm-0.31.0_qwen3-8b-3layers_rtx3070/` (decisión D14 de `requirements.md`). El resultado es la secuencia de kernels que vLLM lanza en cada paso de inferencia y qué ops fusiona cada uno.
+Paso a paso para reproducir la traza de `data/traces/vllm-0.31.0_qwen3-8b-3layers_rtx3070/` (decisión D14 de `docs/brief.md`). El resultado es la secuencia de kernels que vLLM lanza en cada paso de inferencia y qué ops fusiona cada uno.
 
 **Qué se obtiene y qué no.** La traza dice qué kernels corren y cómo se agrupan las ops. No da tiempos ni kernels de GEMM o de atención válidos para H100, porque dependen de la GPU donde se corre.
 

@@ -1,6 +1,6 @@
 # Traza de kernels: vLLM v0.31.0, Qwen3-8B (3 capas), RTX 3070
 
-Referencia para el perfil de fusión de vLLM (decisión D14 de `requirements.md`). Sirve para **qué kernels corren y qué ops fusiona cada uno**. No sirve para tiempos, tiles de GEMM, kernel de atención ni FP8 en H100: esta GPU es Ampere (sm86).
+Referencia para el perfil de fusión de vLLM (decisión D14 de `docs/brief.md`). Sirve para **qué kernels corren y qué ops fusiona cada uno**. No sirve para tiempos, tiles de GEMM, kernel de atención ni FP8 en H100: esta GPU es Ampere (sm86).
 
 ## Entorno
 
