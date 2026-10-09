@@ -9,7 +9,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 ## 1. Esqueleto
 
-- [ ] **1.1 Workspace de Cargo y licencias.** `rust-toolchain.toml` (con el target wasm32); workspace con `crates/core` (`gpuviz-core`, lib) y `crates/wasm` (`gpuviz-wasm`, cdylib, `wasm-bindgen` fijado con `=`); `LICENSE-MIT`, `LICENSE-APACHE`, `LICENSE-CONTENT`; `license = "MIT OR Apache-2.0"`. (R18; §2; ADR 0003)
+- [x] **1.1 Workspace de Cargo y licencias.** `rust-toolchain.toml` (con el target wasm32); workspace con `crates/core` (`gpuviz-core`, lib) y `crates/wasm` (`gpuviz-wasm`, cdylib, `wasm-bindgen` fijado con `=`); `LICENSE-MIT`, `LICENSE-APACHE`, `LICENSE-CONTENT`; `license = "MIT OR Apache-2.0"`. (R18; §2; ADR 0003)
   Check: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && test -f LICENSE-MIT -a -f LICENSE-APACHE -a -f LICENSE-CONTENT`
 - [ ] **1.2 App web.** `web/` con pnpm, Vite, React, TS estricto, R3F, drei, zustand, ESLint, Vitest y Playwright (Chromium). Una página con un `<Canvas>` y una caja. Un test unitario trivial y un e2e que carga la página y falla si hay errores en la consola. `package.json` con `"license": "MIT OR Apache-2.0"`. (R17; §2, §6.1; ADR 0004, 0006)
   Check: `cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm e2e`

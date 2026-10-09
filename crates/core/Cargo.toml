@@ -1,0 +1,8 @@
+[package]
+name = "gpuviz-core"
+description = "Analytical model of LLM inference on a GPU: data, fusion, roofline, tiling and timing."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true

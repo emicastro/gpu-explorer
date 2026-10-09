@@ -1,0 +1,16 @@
+[package]
+name = "gpuviz-wasm"
+description = "WebAssembly boundary for gpuviz-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+gpuviz-core = { path = "../core" }
+# Pinned exactly: wasm-bindgen-cli must match this version (ADR 0003).
+wasm-bindgen = "=0.2.129"
