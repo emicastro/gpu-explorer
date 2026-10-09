@@ -1,1 +1,4 @@
 /target
+
+# Session bridge between Claude sessions; local only.
+/docs/session.md
