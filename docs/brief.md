@@ -118,7 +118,7 @@ Notas:
 ### D8 — Precisión: pesos y KV como perillas separadas [cerrada]
 
 - **Pesos:** BF16 / FP8. FP8 como lo corre vLLM en H100: **W8A8**, por uno de dos caminos según el checkpoint (confirmado en el código de v0.31.0):
-  - **FP8 por tensor** (p. ej. `--quantization fp8` sobre el checkpoint BF16): GEMMs CUTLASS `scaled_mm` para sm90, con las activaciones cuantizadas a FP8 en tiempo de ejecución.
+  - **FP8 por tensor** (`--quantization fp8_per_tensor` sobre el checkpoint BF16; en v0.31.0, `--quantization fp8` sin checkpoint FP8 tira error porque ya no hay cuantización online con ese nombre): GEMMs CUTLASS `scaled_mm` para sm90. Los pesos llevan una escala estática por tensor. Las activaciones se cuantizan a FP8 en tiempo de ejecución con escala dinámica **por token** (`Fp8PerTensorOnlineLinearMethod`, `kFp8DynamicTokenSym`, cuando CUTLASS FP8 está disponible). Esa cuantización es PyTorch nativo bajo Inductor, que la fusiona con la RMSNorm o el SiLU·mul anterior: 12 kernels por capa en decode (design §4.1).
   - **FP8 por bloques** (checkpoint oficial `Qwen3-8B-FP8`: pesos en bloques de 128×128, activaciones dinámicas en grupos de 1×128): vLLM elige `FlashInferFp8DeepGEMMDynamicBlockScaledKernel`. Con **M < 32** corre el kernel *swapAB* de FlashInfer (port de TensorRT-LLM del DeepGEMM original). Con **M ≥ 32** corre **DeepGEMM** (`fp8_gemm_nt`, que vLLM trae incluido en el wheel). Los dos van precedidos de un kernel de cuantización de la activación. La rama se elige con `torch.cond` y ambas quedan capturadas en el grafo. Tiles en §7.2.
 - **FP8 por defecto en v1: por bloques** (el checkpoint oficial, lo que se descarga y se corre en la práctica). El FP8 por tensor queda como alternativa.
 - W8A16 se muestra como variante explicativa, junto a W8A8:
@@ -470,7 +470,7 @@ Entrenamiento, simulación por ciclos, múltiples GPUs, cuantización por debajo
 ## 12. Preguntas abiertas
 
 - **Sin traza en H100, quedan por confirmar** (`simplified` hasta entonces):
-  - Que Inductor no fusione la cuantización 1×128 de la activación con la RMSNorm anterior en el camino DeepGEMM. En el camino de FlashInfer no puede: la cuantización ocurre dentro del op.
+  - Que Inductor fusione la cuantización por token del camino FP8 por tensor con la RMSNorm y el SiLU·mul anteriores (12 kernels por capa en vez de 15).
   - Si 32 CTAs (O y down a batch 1 en FP8 por bloques) alcanzan para saturar el HBM. Afecta directamente el tiempo realista de esas GEMMs.
 - **Disposición física:** no hay floorplan público detallado de GH100 (el de TechInsights es pago). Plan confirmado:
   - Topología del diagrama de bloques del whitepaper: 8 GPCs, L2, 12 controladores de 512 bits en el die completo (10 activos en la H100 SXM).
@@ -478,7 +478,7 @@ Entrenamiento, simulación por ciclos, múltiples GPUs, cuantización por debajo
   - Package con el die al centro y 6 sitios de HBM, 5 activos (fotos de ServeTheHome).
   - No se sabe qué sitio queda inactivo. Todo `simplified`.
 
-Resueltas en esta revisión, con los resultados en las secciones citadas: el camino FP8 por bloques y el FP8 por defecto de v1 (D8, §7.2), la heurística de split-KV de FA3 (§7.2), el benchmark a batch 1 (§8) y los `copy_` de la traza (§6.5).
+Resueltas en esta revisión, con los resultados en las secciones citadas: el camino FP8 por bloques y el FP8 por defecto de v1 (D8, §7.2), la heurística de split-KV de FA3 (§7.2), el benchmark a batch 1 (§8) y los `copy_` de la traza (§6.5). Resuelta después, en la tarea 3.1: la cuantización 1×128 del camino FP8 por bloques es siempre un kernel aparte, también con DeepGEMM. La cuantización y el `torch.cond` que elige entre FlashInfer y DeepGEMM están dentro del custom op `dynamic_flashinfer_deepgemm_blockscale_gemm`, que Inductor no puede abrir (design §4.1).
 
 ## Fuentes de partida
 

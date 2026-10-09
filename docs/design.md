@@ -81,21 +81,25 @@ pub fn evaluate(hw: &str, model: &str, scenario: &Scenario) -> Result<StepPlan, 
 
 ### 4.1 Ops lógicas y perfil de fusión (R2)
 
-- `ops.rs` genera las ops lógicas de una capa de Qwen3 (brief §6.5, lista 1–11) y las de fuera del loop. Cada una lleva sus formas (M, N, K o tamaño del tensor) y sus bytes y FLOPs "sueltos".
-- El perfil de fusión es **dato**. Es una lista ordenada de plantillas de kernel por capa, cada una con:
-  - `name` (el nombre de vLLM, p. ej. `triton_red_fused_add_rms_norm`, `flash_fwd_sm90`, `flash_fwd_combine`);
-  - `ops` (los ids de las ops que fusiona);
-  - `impl` (la clave del modelo de tiling: `inductor_elementwise`, `cublas_bf16`, `cutlass_fp8_tensor`, `flashinfer_swapab`, `deepgemm_sm90`, `marlin_w8a16`, `fa3`, `fa3_combine`, `vllm_cache_write`, `fp8_act_quant`);
-  - `when` (una condición sobre el escenario: `weights == fp8_block`, `phase == decode`, `splits > 1`, …).
+- `ops.rs` genera las ops lógicas de un paso de Qwen3 (brief §6.5, lista 1–11, y las de fuera del loop), cada una con su capa y sus formas (M, N, K o filas × columnas). Los bytes y FLOPs "sueltos" salen de esas formas (§4.2).
+  - Con pesos W8A8 (`fp8_block`, `fp8_tensor`) se agregan cuatro ops de cuantización de la activación por capa, una antes de cada GEMM. W8A16 no cuantiza la activación.
+- El perfil de fusión es **dato**, con la forma de [ADR 0011](adr/0011-fusion-profile-shape.md): tres listas ordenadas de plantillas (`prologue`, `layer`, `epilogue`). Cada plantilla tiene:
+  - `name` (el nombre del kernel, p. ej. `triton_red_fused_fused_add_rms_norm`, `FlashAttnFwdSm90`, `FlashAttnFwdCombine`);
+  - `ops` (los tipos de op que fusiona; `kind@prev` es la op de la capa anterior);
+  - `impl` (la clave del modelo de tiling: `inductor_elementwise`, `cublas_bf16`, `cutlass_fp8_tensor`, `flashinfer_swapab`, `deepgemm_sm90`, `marlin_w8a16`, `fa3`, `fa3_combine`, `fa3_prepare`, `vllm_cache_write`, `fp8_act_quant`, `vllm_prepare_inputs`, `torch_index`, `sampling`);
+  - `when` (condiciones que deben cumplirse todas: `phase`, `weights`, `tokens` (M), `attentionSplits`, `firstLayer`);
+  - `confidence` y `sources` (claves de un mapa de fuentes del archivo).
+- `fuse(model, scenario, attention_splits)` devuelve las ops, los kernels y los `LayerSpan`. Falla si una op no corre en ningún kernel o corre en dos (salvo la preparación de inputs y la atención, que ocupan varios).
 - Secuencia por capa en decode BF16 (11 kernels): residual + RMSNorm, GEMM QKV, QK-norm + RoPE, escritura al KV, FA3, FA3 combine, GEMM O, residual + RMSNorm, GEMM gate+up, SiLU·mul, GEMM down.
-  - Con FP8 por bloques se agrega un kernel de cuantización de la activación antes de cada GEMM: 15 por capa.
-  - En prefill, sin CUDA graphs, el `combine` solo aparece si la heurística da `splits > 1`.
+  - **FP8 por bloques: 15 por capa.** Un kernel de cuantización antes de cada GEMM, en las dos ramas: `scale_1x128_kernel` + `fp8_gemm_kernel_swapAB` con M < 32, `per_token_group_quant_8bit_kernel` + `sm90_fp8_gemm_1d2d_impl` con M ≥ 32. `documented`: la cuantización y el `torch.cond` están dentro del custom op `dynamic_flashinfer_deepgemm_blockscale_gemm`, opaco para Inductor, así que no se puede fusionar con la RMSNorm.
+  - **FP8 por tensor: 12 por capa.** La cuantización por token es PyTorch nativo bajo Inductor, que la fusiona con la RMSNorm previa (QKV, gate+up) y con SiLU·mul (down). Solo la de la GEMM O queda sola, porque la salida de FA3 es opaca. `simplified`: inferido del comportamiento de Inductor, sin traza.
+  - **W8A16: 11 por capa,** con Marlin en lugar de cuBLAS (`simplified`: vLLM lo usa en H100 solo si se fuerza).
+  - El `combine` corre solo si FA3 ve `splits > 1` del lado del host. En decode con CUDA graphs ve siempre el tope de 32, así que corre siempre. En prefill, fuera de CUDA graphs, depende de la heurística.
   - El `splitKreduce` de cuBLAS que se vio en Ampere no se modela en H100 (no hay fuente; `simplified`).
 - Fuera del loop:
-  - kernels de preparación de inputs (~8, `estimated`);
-  - el `prepare_varlen_num_blocks` de FA3, una vez por paso;
-  - embeddings + primera RMSNorm (fusionadas), RMSNorm final, gather del último token, LM head y sampling.
-- La cuantización FP8 de la activación queda como kernel separado también en el camino DeepGEMM (`simplified`; brief §12).
+  - preparación de inputs: 7 kernels en decode y 12 en prefill (`estimated`; los de la traza de D14, cuya cantidad depende de cómo cambió el batch);
+  - el `prepare_varlen_num_blocks_kernel` de FA3, una vez por paso en las dos fases;
+  - embeddings + primera RMSNorm (fusionadas, en la capa 0), RMSNorm final con la última suma residual, gather del último token, LM head (BF16 en todos los formatos de pesos) y sampling (`estimated`).
 
 ### 4.2 Roofline y cota inferior (R1)
 
@@ -116,7 +120,7 @@ Un módulo por `impl`, todos con la misma firma: `fn launch(shape, scenario, hw)
 | `deepgemm_sm90` | heurística de `sm90.hpp` (DeepGEMM `e1f418c`), M ≥ 32, reimplementada con su modelo de ciclos L1/L2 | `documented` |
 | `cutlass_fp8_tensor` | tabla de `scaled_mm_sm90_fp8_dispatch.cuh` | `documented` |
 | `cublas_bf16` | tiles representativos de Hopper (los de CUTLASS BF16 equivalentes) | `simplified` |
-| `marlin_w8a16`, `inductor_elementwise`, `vllm_cache_write`, `fp8_act_quant` | grid del código fuente o de la traza de D14 | `simplified` |
+| `marlin_w8a16`, `inductor_elementwise`, `vllm_cache_write`, `fp8_act_quant`, `fa3_prepare`, `vllm_prepare_inputs`, `torch_index`, `sampling` | grid del código fuente o de la traza de D14 | `simplified` |
 
 - Kernels persistentes (FA3 varlen, DeepGEMM, FlashInfer): grid de 132 CTAs. Las "ondas" son las rondas de tiles que reparte el scheduler: `ondas = ⌈tiles / 132⌉`.
 - `per_wave[i]` = tiles activos en la ronda `i`. El 3D asigna tiles a SMs en orden de índice de SM. El scheduler real no es determinista, así que esa asignación es `simplified`.
@@ -276,6 +280,6 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 ## 10. Riesgos y pendientes
 
-- **Agrupación de kernels en H100 sin traza propia** (brief D14 y §12): la fusión de la cuantización FP8 y la saturación de HBM con 32 CTAs quedan `simplified` / `estimated` hasta tener una corrida en H100.
+- **Agrupación de kernels en H100 sin traza propia** (brief D14 y §12): la fusión de la cuantización por token en el camino FP8 por tensor y la saturación de HBM con 32 CTAs quedan `simplified` / `estimated` hasta tener una corrida en H100. La cuantización del camino FP8 por bloques ya no es una incógnita: el código fuente la deja en un kernel aparte (§4.1).
 - **El tiling de cuBLAS BF16 es una aproximación** (`simplified`). Es el camino BF16, el que más se va a mirar; la UI tiene que decirlo con claridad.
 - **El 3D es el riesgo principal de esfuerzo** (brief §2). Por eso el grupo 4 llega a un hito visible con datos reales temprano, en paralelo con el núcleo.

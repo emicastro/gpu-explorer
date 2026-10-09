@@ -4,9 +4,12 @@
 //! time, and `evaluate` turns a scenario into a step plan (design §3–§4).
 
 pub mod error;
+pub mod fusion;
 pub mod hardware;
 pub mod model;
+pub mod ops;
 pub mod quantity;
+pub mod scenario;
 pub mod units;
 
 /// Version of this crate, as declared in `Cargo.toml`.

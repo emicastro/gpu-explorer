@@ -1,0 +1,989 @@
+{
+  "id": "vllm-0.31.0-h100",
+  "engine": "vLLM v0.31.0",
+  "hardware": "h100-sxm",
+  "sources": {
+    "trace": "data/traces/vllm-0.31.0_qwen3-8b-3layers_rtx3070: vLLM v0.31.0 kernel sequence for Qwen3-8B in BF16, with the ops of each Inductor kernel read from the generated Triton code (RTX 3070; FA2 instead of FA3)",
+    "qwen3": "vLLM v0.31.0 vllm/model_executor/models/qwen3.py: one QKV GEMM, one O GEMM, one gate+up GEMM, one down GEMM; the residual add is passed into the next RMSNorm",
+    "inductor": "vLLM v0.31.0 vllm/config/vllm.py (custom_ops = none under Inductor) and vllm/platforms/cuda.py (get_default_ir_op_priority: native when compiling): RMSNorm, residual add, QK-norm, RoPE, SiLU·mul and the per-token FP8 quant are PyTorch code that Inductor fuses into Triton kernels",
+    "fa3_backend": "vLLM v0.31.0 vllm/v1/attention/backends/flash_attn.py: FA3 with aot_schedule, so get_scheduler_metadata runs once per step; max_num_splits is the CUDA-graph cap (32) when the step fits a full graph, else 0 (FA3 heuristic); reshape_and_cache_flash writes the KV cache before the attention call",
+    "fa3_kernels": "vllm-project/flash-attention 9cd61de: hopper/flash_prepare_scheduler.cu (prepare_varlen_num_blocks_kernel), hopper/flash_fwd_launch_template.h (FlashAttnFwdSm90), hopper/flash_api.cpp (FlashAttnFwdCombine runs when params.num_splits > 1)",
+    "fp8_block": "vLLM v0.31.0 vllm/model_executor/kernels/linear/scaled_mm/flashinfer.py: FlashInferFp8DeepGEMMDynamicBlockScaledKernel calls the custom op dynamic_flashinfer_deepgemm_blockscale_gemm, which quantizes the activation inside the op and picks FlashInfer swapAB (M < 32) or DeepGEMM (M >= 32) with torch.cond; Inductor cannot fuse the quant into the RMSNorm",
+    "flashinfer": "FlashInfer 0.7.0.post1 csrc/nv_internal/tensorrt_llm/kernels/cutlass_kernels/fp8_blockscale_gemm/fp8_blockscale_gemm_kernel.cuh (fp8_gemm_run launches scale_1x128_kernel, then the GEMM) and csrc/nv_internal/tensorrt_llm/deep_gemm/compiler.cuh (fp8_gemm_kernel_swapAB)",
+    "deepgemm": "vLLM v0.31.0 vllm/model_executor/layers/quantization/utils/fp8_utils.py (per_token_group_quant_fp8 calls the CUDA op in csrc/libtorch_stable/quantization/w8a8/fp8/per_token_group_quant.cu, per_token_group_quant_8bit_kernel) and vllm-project/DeepGEMM e1f418c csrc/jit_kernels/impls/sm90_fp8_gemm_1d2d.hpp (sm90_fp8_gemm_1d2d_impl)",
+    "fp8_tensor": "vLLM v0.31.0 vllm/model_executor/layers/quantization/online/fp8.py (Fp8PerTensorOnlineLinearMethod, per-token dynamic activation scales with CUTLASS) and vllm/model_executor/kernels/linear/scaled_mm/ScaledMMLinearKernel.py (QuantFP8, native under Inductor, then cutlass_scaled_mm); the fusion of the quant into the preceding RMSNorm or SiLU·mul is inferred from Inductor's reduction fusion, not traced",
+    "marlin": "vLLM v0.31.0 vllm/model_executor/kernels/linear/scaled_mm/marlin.py (MarlinFP8ScaledMMLinearKernel: BF16 activations, no input quant) and csrc/libtorch_stable/quantization/marlin/kernel.h (Marlin); vLLM uses it on H100 only when forced",
+    "lm_head": "vLLM v0.31.0 vllm/model_executor/layers/quantization/fp8.py: get_quant_method quantizes LinearBase layers only, so ParallelLMHead stays BF16",
+    "model_runner": "vLLM v0.31.0 vllm/v1/worker/gpu/model_runner.py: sample_hidden_states = hidden_states[input_batch.logits_indices] before compute_logits"
+  },
+  "prologue": [
+    {
+      "name": "_apply_write_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "when": {
+        "phase": "prefill"
+      },
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_apply_write_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "when": {
+        "phase": "prefill"
+      },
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_apply_write_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "when": {
+        "phase": "prefill"
+      },
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_apply_write_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "when": {
+        "phase": "prefill"
+      },
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "aten::fill_",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "aten::arange",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "aten::fill_",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_prepare_prefill_inputs_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "when": {
+        "phase": "prefill"
+      },
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_prepare_pos_seq_lens_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_combine_sampled_and_draft_tokens_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_gather_block_tables_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "_compute_slot_mappings_kernel",
+      "ops": [
+        "prepare_inputs"
+      ],
+      "impl": "vllm_prepare_inputs",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    },
+    {
+      "name": "prepare_varlen_num_blocks_kernel",
+      "ops": [
+        "attention_schedule"
+      ],
+      "impl": "fa3_prepare",
+      "confidence": "documented",
+      "sources": [
+        "fa3_backend",
+        "fa3_kernels"
+      ]
+    }
+  ],
+  "layer": [
+    {
+      "name": "triton_red_fused__to_copy_embedding_rms_norm",
+      "ops": [
+        "embedding",
+        "input_norm"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "bf16",
+          "fp8_block",
+          "fp8_w8a16"
+        ],
+        "firstLayer": true
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "inductor"
+      ]
+    },
+    {
+      "name": "triton_red_fused",
+      "ops": [
+        "embedding",
+        "input_norm",
+        "qkv_quant"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ],
+        "firstLayer": true
+      },
+      "confidence": "simplified",
+      "sources": [
+        "fp8_tensor",
+        "inductor"
+      ]
+    },
+    {
+      "name": "triton_red_fused_fused_add_rms_norm",
+      "ops": [
+        "mlp_residual@prev",
+        "input_norm"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "bf16",
+          "fp8_block",
+          "fp8_w8a16"
+        ],
+        "firstLayer": false
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "inductor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "triton_red_fused",
+      "ops": [
+        "mlp_residual@prev",
+        "input_norm",
+        "qkv_quant"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ],
+        "firstLayer": false
+      },
+      "confidence": "simplified",
+      "sources": [
+        "fp8_tensor",
+        "inductor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "scale_1x128_kernel",
+      "ops": [
+        "qkv_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "fp8_gemm_kernel_swapAB",
+      "ops": [
+        "qkv_proj"
+      ],
+      "impl": "flashinfer_swapab",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "per_token_group_quant_8bit_kernel",
+      "ops": [
+        "qkv_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "sm90_fp8_gemm_1d2d_impl",
+      "ops": [
+        "qkv_proj"
+      ],
+      "impl": "deepgemm_sm90",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "aten::mm",
+      "ops": [
+        "qkv_proj"
+      ],
+      "impl": "cublas_bf16",
+      "when": {
+        "weights": [
+          "bf16"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "cutlass_scaled_mm",
+      "ops": [
+        "qkv_proj"
+      ],
+      "impl": "cutlass_fp8_tensor",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_tensor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "Marlin",
+      "ops": [
+        "qkv_proj"
+      ],
+      "impl": "marlin_w8a16",
+      "when": {
+        "weights": [
+          "fp8_w8a16"
+        ]
+      },
+      "confidence": "simplified",
+      "sources": [
+        "marlin",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "triton_red_fused",
+      "ops": [
+        "qk_norm",
+        "rope"
+      ],
+      "impl": "inductor_elementwise",
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "inductor"
+      ]
+    },
+    {
+      "name": "reshape_and_cache_flash_kernel",
+      "ops": [
+        "kv_write"
+      ],
+      "impl": "vllm_cache_write",
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "fa3_backend"
+      ]
+    },
+    {
+      "name": "FlashAttnFwdSm90",
+      "ops": [
+        "attention"
+      ],
+      "impl": "fa3",
+      "confidence": "documented",
+      "sources": [
+        "fa3_backend",
+        "fa3_kernels"
+      ]
+    },
+    {
+      "name": "FlashAttnFwdCombine",
+      "ops": [
+        "attention"
+      ],
+      "impl": "fa3_combine",
+      "when": {
+        "attentionSplits": {
+          "ge": 2
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fa3_backend",
+        "fa3_kernels"
+      ]
+    },
+    {
+      "name": "triton_red_fused",
+      "ops": [
+        "o_quant"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ]
+      },
+      "confidence": "simplified",
+      "sources": [
+        "fp8_tensor",
+        "inductor"
+      ]
+    },
+    {
+      "name": "scale_1x128_kernel",
+      "ops": [
+        "o_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "fp8_gemm_kernel_swapAB",
+      "ops": [
+        "o_proj"
+      ],
+      "impl": "flashinfer_swapab",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "per_token_group_quant_8bit_kernel",
+      "ops": [
+        "o_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "sm90_fp8_gemm_1d2d_impl",
+      "ops": [
+        "o_proj"
+      ],
+      "impl": "deepgemm_sm90",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "aten::mm",
+      "ops": [
+        "o_proj"
+      ],
+      "impl": "cublas_bf16",
+      "when": {
+        "weights": [
+          "bf16"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "cutlass_scaled_mm",
+      "ops": [
+        "o_proj"
+      ],
+      "impl": "cutlass_fp8_tensor",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_tensor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "Marlin",
+      "ops": [
+        "o_proj"
+      ],
+      "impl": "marlin_w8a16",
+      "when": {
+        "weights": [
+          "fp8_w8a16"
+        ]
+      },
+      "confidence": "simplified",
+      "sources": [
+        "marlin",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "triton_red_fused_fused_add_rms_norm",
+      "ops": [
+        "attn_residual",
+        "post_attn_norm"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "bf16",
+          "fp8_block",
+          "fp8_w8a16"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "inductor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "triton_red_fused",
+      "ops": [
+        "attn_residual",
+        "post_attn_norm",
+        "gate_up_quant"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ]
+      },
+      "confidence": "simplified",
+      "sources": [
+        "fp8_tensor",
+        "inductor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "scale_1x128_kernel",
+      "ops": [
+        "gate_up_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "fp8_gemm_kernel_swapAB",
+      "ops": [
+        "gate_up_proj"
+      ],
+      "impl": "flashinfer_swapab",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "per_token_group_quant_8bit_kernel",
+      "ops": [
+        "gate_up_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "sm90_fp8_gemm_1d2d_impl",
+      "ops": [
+        "gate_up_proj"
+      ],
+      "impl": "deepgemm_sm90",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "aten::mm",
+      "ops": [
+        "gate_up_proj"
+      ],
+      "impl": "cublas_bf16",
+      "when": {
+        "weights": [
+          "bf16"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "cutlass_scaled_mm",
+      "ops": [
+        "gate_up_proj"
+      ],
+      "impl": "cutlass_fp8_tensor",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_tensor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "Marlin",
+      "ops": [
+        "gate_up_proj"
+      ],
+      "impl": "marlin_w8a16",
+      "when": {
+        "weights": [
+          "fp8_w8a16"
+        ]
+      },
+      "confidence": "simplified",
+      "sources": [
+        "marlin",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "triton_poi_fused_mul_silu_slice",
+      "ops": [
+        "silu_mul"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "bf16",
+          "fp8_block",
+          "fp8_w8a16"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "inductor"
+      ]
+    },
+    {
+      "name": "triton_red_fused",
+      "ops": [
+        "silu_mul",
+        "down_quant"
+      ],
+      "impl": "inductor_elementwise",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ]
+      },
+      "confidence": "simplified",
+      "sources": [
+        "fp8_tensor",
+        "inductor"
+      ]
+    },
+    {
+      "name": "scale_1x128_kernel",
+      "ops": [
+        "down_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "fp8_gemm_kernel_swapAB",
+      "ops": [
+        "down_proj"
+      ],
+      "impl": "flashinfer_swapab",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "lt": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "flashinfer"
+      ]
+    },
+    {
+      "name": "per_token_group_quant_8bit_kernel",
+      "ops": [
+        "down_quant"
+      ],
+      "impl": "fp8_act_quant",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "sm90_fp8_gemm_1d2d_impl",
+      "ops": [
+        "down_proj"
+      ],
+      "impl": "deepgemm_sm90",
+      "when": {
+        "weights": [
+          "fp8_block"
+        ],
+        "tokens": {
+          "ge": 32
+        }
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_block",
+        "deepgemm"
+      ]
+    },
+    {
+      "name": "aten::mm",
+      "ops": [
+        "down_proj"
+      ],
+      "impl": "cublas_bf16",
+      "when": {
+        "weights": [
+          "bf16"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "cutlass_scaled_mm",
+      "ops": [
+        "down_proj"
+      ],
+      "impl": "cutlass_fp8_tensor",
+      "when": {
+        "weights": [
+          "fp8_tensor"
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "fp8_tensor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "Marlin",
+      "ops": [
+        "down_proj"
+      ],
+      "impl": "marlin_w8a16",
+      "when": {
+        "weights": [
+          "fp8_w8a16"
+        ]
+      },
+      "confidence": "simplified",
+      "sources": [
+        "marlin",
+        "qwen3"
+      ]
+    }
+  ],
+  "epilogue": [
+    {
+      "name": "triton_red_fused_fused_add_rms_norm",
+      "ops": [
+        "mlp_residual@prev",
+        "final_norm"
+      ],
+      "impl": "inductor_elementwise",
+      "confidence": "documented",
+      "sources": [
+        "trace",
+        "inductor",
+        "qwen3"
+      ]
+    },
+    {
+      "name": "aten::index",
+      "ops": [
+        "gather_last"
+      ],
+      "impl": "torch_index",
+      "confidence": "documented",
+      "sources": [
+        "model_runner"
+      ]
+    },
+    {
+      "name": "aten::mm",
+      "ops": [
+        "lm_head"
+      ],
+      "impl": "cublas_bf16",
+      "confidence": "documented",
+      "sources": [
+        "lm_head",
+        "trace"
+      ]
+    },
+    {
+      "name": "sampler",
+      "ops": [
+        "sampling"
+      ],
+      "impl": "sampling",
+      "confidence": "estimated",
+      "sources": [
+        "trace"
+      ]
+    }
+  ]
+}

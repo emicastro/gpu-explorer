@@ -8,6 +8,8 @@ pub enum CoreError {
     UnknownId { kind: &'static str, id: String },
     /// An embedded data file is malformed or breaks an invariant.
     InvalidData(String),
+    /// The scenario is out of range or inconsistent.
+    InvalidScenario(String),
 }
 
 impl fmt::Display for CoreError {
@@ -15,6 +17,7 @@ impl fmt::Display for CoreError {
         match self {
             CoreError::UnknownId { kind, id } => write!(f, "unknown {kind} id: {id:?}"),
             CoreError::InvalidData(msg) => write!(f, "invalid data: {msg}"),
+            CoreError::InvalidScenario(msg) => write!(f, "invalid scenario: {msg}"),
         }
     }
 }
