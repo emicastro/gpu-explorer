@@ -3,4 +3,4 @@
 /**
  * The unit tag of a serialized value, always the SI base unit.
  */
-export type Unit = "B" | "FLOP" | "s" | "B/s" | "FLOP/s" | "FLOP/B" | "count";
+export type Unit = "B" | "FLOP" | "s" | "B/s" | "FLOP/s" | "FLOP/B" | "Hz" | "FLOP/cycle" | "count";

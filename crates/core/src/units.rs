@@ -30,6 +30,9 @@ pub trait Measure: Copy {
     const UNIT: Unit;
     /// The value in the SI base unit.
     fn value(self) -> f64;
+    /// The inverse of `value`; `None` when `v` is not a valid value of this
+    /// type (a fractional or negative `Count`).
+    fn from_value(v: f64) -> Option<Self>;
 }
 
 macro_rules! real_unit {
@@ -42,6 +45,9 @@ macro_rules! real_unit {
             const UNIT: Unit = Unit::$unit;
             fn value(self) -> f64 {
                 self.0
+            }
+            fn from_value(v: f64) -> Option<Self> {
+                Some($name(v))
             }
         }
 
@@ -121,6 +127,14 @@ real_unit!(
     /// Arithmetic intensity in FLOPs per byte.
     Intensity, FlopsPerByte
 );
+real_unit!(
+    /// A clock frequency in cycles per second.
+    Hertz, Hertz
+);
+real_unit!(
+    /// Throughput per clock cycle: what one tensor core does each cycle.
+    FlopsPerCycle, FlopsPerCycle
+);
 
 /// `n` instances of a quantity: 132 SMs × shared memory per SM. Not for
 /// `Intensity`, which is a ratio and does not add up across instances.
@@ -135,7 +149,14 @@ macro_rules! countable {
     )*};
 }
 
-countable!(Bytes, Flops, Seconds, BytesPerSec, FlopsPerSec);
+countable!(
+    Bytes,
+    Flops,
+    Seconds,
+    BytesPerSec,
+    FlopsPerSec,
+    FlopsPerCycle
+);
 
 /// `lhs * rhs = out` and both divisions back.
 macro_rules! product {
@@ -175,6 +196,8 @@ product!(FlopsPerSec * Seconds = Flops);
 product!(Intensity * Bytes = Flops);
 // Ridge point: peak FLOP/s over bandwidth; and the roofline's memory slope.
 product!(Intensity * BytesPerSec = FlopsPerSec);
+// Peak throughput: FLOPs per cycle at a clock.
+product!(FlopsPerCycle * Hertz = FlopsPerSec);
 
 /// A count of discrete things: SMs, blocks, tokens, layers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -192,6 +215,11 @@ impl Measure for Count {
     const UNIT: Unit = Unit::Count;
     fn value(self) -> f64 {
         self.as_f64()
+    }
+    fn from_value(v: f64) -> Option<Self> {
+        // The upper bound keeps the cast exact (see `as_f64`).
+        let exact = v >= 0.0 && v.fract() == 0.0 && v < 2f64.powi(53);
+        exact.then_some(Count(v as u64))
     }
 }
 
@@ -264,6 +292,24 @@ mod tests {
         assert_eq!(Count(2) + Count(3), Count(5));
         assert_eq!(Count(2) * Count(3), Count(6));
         assert_eq!([Count(1), Count(2)].into_iter().sum::<Count>(), Count(3));
+    }
+
+    #[test]
+    fn peak_is_flops_per_cycle_at_a_clock() {
+        assert_eq!(FlopsPerCycle(2.0) * Hertz(3.0), FlopsPerSec(6.0));
+        assert_eq!(FlopsPerSec(6.0) / Hertz(3.0), FlopsPerCycle(2.0));
+        assert_eq!(Count(4) * FlopsPerCycle(2.0), FlopsPerCycle(8.0));
+    }
+
+    #[test]
+    fn count_from_value_rejects_non_integers() {
+        assert_eq!(Count::from_value(132.0), Some(Count(132)));
+        assert_eq!(Count::from_value(0.0), Some(Count(0)));
+        assert_eq!(Count::from_value(1.5), None);
+        assert_eq!(Count::from_value(-1.0), None);
+        assert_eq!(Count::from_value(f64::NAN), None);
+        assert_eq!(Count::from_value(f64::INFINITY), None);
+        assert_eq!(Bytes::from_value(1.5), Some(Bytes(1.5)));
     }
 
     #[test]

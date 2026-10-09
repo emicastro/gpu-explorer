@@ -3,6 +3,8 @@
 //! Pure Rust with no I/O: hardware and model data are embedded at compile
 //! time, and `evaluate` turns a scenario into a step plan (design §3–§4).
 
+pub mod error;
+pub mod hardware;
 pub mod quantity;
 pub mod units;
 

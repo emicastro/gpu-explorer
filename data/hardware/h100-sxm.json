@@ -1,0 +1,670 @@
+{
+  "id": "board",
+  "name": "H100 SXM5 module",
+  "level": "board",
+  "contentId": "board",
+  "children": [
+    {
+      "id": "package",
+      "name": "H100 package",
+      "level": "package",
+      "specs": {
+        "memoryCapacity": {
+          "value": 85899345920,
+          "unit": "B",
+          "confidence": "documented",
+          "sources": [
+            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): H100 SXM5 has 80 GB HBM3 in 5 stacks",
+            "80 GB = 5 × 16 GiB HBM3 stacks"
+          ]
+        },
+        "hbmBandwidth": {
+          "value": 3350000000000.0,
+          "unit": "B/s",
+          "confidence": "documented",
+          "sources": [
+            "NVIDIA H100 product page, H100 SXM specifications: GPU Memory Bandwidth 3.35TB/s (the GTC22 whitepaper's 3000 GB/sec was preliminary)"
+          ]
+        }
+      },
+      "contentId": "package",
+      "children": [
+        {
+          "id": "die",
+          "name": "GH100 die",
+          "level": "die",
+          "specs": {
+            "l2Capacity": {
+              "value": 52428800,
+              "unit": "B",
+              "confidence": "documented",
+              "sources": [
+                "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 3: L2 Cache Size 50 MB (= 50 MiB)"
+              ]
+            },
+            "tensorClock": {
+              "value": 1830000000.0,
+              "unit": "Hz",
+              "confidence": "simplified",
+              "sources": [
+                "NVIDIA H100 product page, H100 SXM specifications: BF16 Tensor Core 1,979 TFLOPS with sparsity, so 989.4 dense; 989.4e12 / (528 tensor cores × 1024 FLOP/cycle) = 1.83 GHz",
+                "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 3: GPU Boost Clock Not Finalized; NVIDIA does not state the clock behind its tensor peaks",
+                "glennklockwood.com/garden/processors/H100: 1.83 GHz for low-precision (tensor) peaks"
+              ]
+            }
+          },
+          "contentId": "die",
+          "children": [
+            {
+              "id": "gpc-8tpc",
+              "name": "GPC (8 of 9 TPCs enabled)",
+              "level": "gpc",
+              "count": {
+                "value": 6,
+                "unit": "count",
+                "confidence": "simplified",
+                "sources": [
+                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): H100 SXM5 has 8 GPCs and 66 TPCs, 9 TPCs/GPC on the full die",
+                  "Which TPCs are disabled varies per unit; design §3.2 fixes 6 GPCs with 8 TPCs and 2 with 9"
+                ]
+              },
+              "contentId": "gpc",
+              "children": [
+                {
+                  "id": "gpc-8tpc/tpc",
+                  "name": "TPC",
+                  "level": "tpc",
+                  "count": {
+                    "value": 9,
+                    "unit": "count",
+                    "confidence": "documented",
+                    "sources": [
+                      "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): full GH100 has 9 TPCs/GPC"
+                    ]
+                  },
+                  "enabled": {
+                    "value": 8,
+                    "unit": "count",
+                    "confidence": "simplified",
+                    "sources": [
+                      "Which TPCs are disabled varies per unit; design §3.2 fixes 6 GPCs with 8 TPCs and 2 with 9"
+                    ]
+                  },
+                  "contentId": "tpc",
+                  "children": [
+                    {
+                      "id": "gpc-8tpc/tpc/sm",
+                      "name": "SM",
+                      "level": "sm",
+                      "count": {
+                        "value": 2,
+                        "unit": "count",
+                        "confidence": "documented",
+                        "sources": [
+                          "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): 2 SMs/TPC"
+                        ]
+                      },
+                      "specs": {
+                        "maxThreads": {
+                          "value": 2048,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Threads / SM"
+                          ]
+                        },
+                        "maxWarps": {
+                          "value": 64,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Warps / SM"
+                          ]
+                        },
+                        "maxBlocks": {
+                          "value": 32,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Thread Blocks (CTAs) / SM"
+                          ]
+                        },
+                        "registers": {
+                          "value": 65536,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max 32-bit Registers / SM"
+                          ]
+                        },
+                        "maxRegistersPerThread": {
+                          "value": 255,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Registers / Thread"
+                          ]
+                        }
+                      },
+                      "contentId": "sm",
+                      "children": [
+                        {
+                          "id": "gpc-8tpc/tpc/sm/subpartition",
+                          "name": "SM sub-partition",
+                          "level": "subpartition",
+                          "count": {
+                            "value": 4,
+                            "unit": "count",
+                            "confidence": "documented",
+                            "sources": [
+                              "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM): four sub-partitions"
+                            ]
+                          },
+                          "contentId": "subpartition",
+                          "children": [
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/warp-scheduler",
+                              "name": "Warp scheduler",
+                              "level": "unit",
+                              "specs": {
+                                "threadsPerClock": {
+                                  "value": 32,
+                                  "unit": "count",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition: Warp Scheduler (32 thread/clk)"
+                                  ]
+                                }
+                              },
+                              "contentId": "warp-scheduler"
+                            },
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/register-file",
+                              "name": "Register file",
+                              "level": "unit",
+                              "specs": {
+                                "capacity": {
+                                  "value": 65536,
+                                  "unit": "B",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition: Register File (16,384 x 32-bit) = 64 KiB"
+                                  ]
+                                }
+                              },
+                              "contentId": "register-file"
+                            },
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/tensor-core",
+                              "name": "Tensor core (4th gen)",
+                              "level": "unit",
+                              "specs": {
+                                "bf16DensePerClock": {
+                                  "value": 1024,
+                                  "unit": "FLOP/cycle",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA A100 Tensor Core GPU Architecture whitepaper: 256 FP16/FP32 FMA per clock per Tensor Core",
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), H100 SM Key Feature Summary: 2x the MMA rate of the A100 SM on equivalent data types"
+                                  ]
+                                },
+                                "fp8DensePerClock": {
+                                  "value": 2048,
+                                  "unit": "FLOP/cycle",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA A100 Tensor Core GPU Architecture whitepaper: 256 FP16/FP32 FMA per clock per Tensor Core",
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), H100 SM Key Feature Summary: 4x the rate of A100 using FP8"
+                                  ]
+                                }
+                              },
+                              "contentId": "tensor-core"
+                            },
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/fp32-core",
+                              "name": "FP32 CUDA core",
+                              "level": "unit",
+                              "count": {
+                                "value": 32,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition; Table 3: 128 FP32 cores / SM"
+                                ]
+                              },
+                              "contentId": "cuda-core"
+                            },
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/int32-core",
+                              "name": "INT32 core",
+                              "level": "unit",
+                              "count": {
+                                "value": 16,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition; Table 3: 64 INT32 cores / SM"
+                                ]
+                              },
+                              "contentId": "int32-core"
+                            },
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/fp64-core",
+                              "name": "FP64 core",
+                              "level": "unit",
+                              "count": {
+                                "value": 16,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition; Table 3: 64 FP64 cores / SM"
+                                ]
+                              },
+                              "contentId": "fp64-core"
+                            },
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/ld-st",
+                              "name": "Load/store unit",
+                              "level": "unit",
+                              "count": {
+                                "value": 8,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition"
+                                ]
+                              },
+                              "contentId": "ld-st"
+                            },
+                            {
+                              "id": "gpc-8tpc/tpc/sm/subpartition/sfu",
+                              "name": "Special function unit",
+                              "level": "unit",
+                              "contentId": "sfu"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "gpc-8tpc/tpc/sm/l1-shared",
+                          "name": "L1 data cache / shared memory",
+                          "level": "unit",
+                          "specs": {
+                            "capacity": {
+                              "value": 262144,
+                              "unit": "B",
+                              "confidence": "documented",
+                              "sources": [
+                                "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): 256 KB of combined shared memory and L1 data cache per SM"
+                              ]
+                            },
+                            "sharedMemoryMax": {
+                              "value": 233472,
+                              "unit": "B",
+                              "confidence": "documented",
+                              "sources": [
+                                "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): shared memory configurable up to 228 KB per SM"
+                              ]
+                            }
+                          },
+                          "contentId": "l1-shared"
+                        },
+                        {
+                          "id": "gpc-8tpc/tpc/sm/tma",
+                          "name": "Tensor Memory Accelerator",
+                          "level": "unit",
+                          "contentId": "tma"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "gpc-9tpc",
+              "name": "GPC (9 of 9 TPCs enabled)",
+              "level": "gpc",
+              "count": {
+                "value": 2,
+                "unit": "count",
+                "confidence": "simplified",
+                "sources": [
+                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): H100 SXM5 has 8 GPCs and 66 TPCs, 9 TPCs/GPC on the full die",
+                  "Which TPCs are disabled varies per unit; design §3.2 fixes 6 GPCs with 8 TPCs and 2 with 9"
+                ]
+              },
+              "contentId": "gpc",
+              "children": [
+                {
+                  "id": "gpc-9tpc/tpc",
+                  "name": "TPC",
+                  "level": "tpc",
+                  "count": {
+                    "value": 9,
+                    "unit": "count",
+                    "confidence": "documented",
+                    "sources": [
+                      "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): full GH100 has 9 TPCs/GPC"
+                    ]
+                  },
+                  "enabled": {
+                    "value": 9,
+                    "unit": "count",
+                    "confidence": "simplified",
+                    "sources": [
+                      "Which TPCs are disabled varies per unit; design §3.2 fixes 6 GPCs with 8 TPCs and 2 with 9"
+                    ]
+                  },
+                  "contentId": "tpc",
+                  "children": [
+                    {
+                      "id": "gpc-9tpc/tpc/sm",
+                      "name": "SM",
+                      "level": "sm",
+                      "count": {
+                        "value": 2,
+                        "unit": "count",
+                        "confidence": "documented",
+                        "sources": [
+                          "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): 2 SMs/TPC"
+                        ]
+                      },
+                      "specs": {
+                        "maxThreads": {
+                          "value": 2048,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Threads / SM"
+                          ]
+                        },
+                        "maxWarps": {
+                          "value": 64,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Warps / SM"
+                          ]
+                        },
+                        "maxBlocks": {
+                          "value": 32,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Thread Blocks (CTAs) / SM"
+                          ]
+                        },
+                        "registers": {
+                          "value": 65536,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max 32-bit Registers / SM"
+                          ]
+                        },
+                        "maxRegistersPerThread": {
+                          "value": 255,
+                          "unit": "count",
+                          "confidence": "documented",
+                          "sources": [
+                            "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Table 4 (Compute Capability 9.0): Max Registers / Thread"
+                          ]
+                        }
+                      },
+                      "contentId": "sm",
+                      "children": [
+                        {
+                          "id": "gpc-9tpc/tpc/sm/subpartition",
+                          "name": "SM sub-partition",
+                          "level": "subpartition",
+                          "count": {
+                            "value": 4,
+                            "unit": "count",
+                            "confidence": "documented",
+                            "sources": [
+                              "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM): four sub-partitions"
+                            ]
+                          },
+                          "contentId": "subpartition",
+                          "children": [
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/warp-scheduler",
+                              "name": "Warp scheduler",
+                              "level": "unit",
+                              "specs": {
+                                "threadsPerClock": {
+                                  "value": 32,
+                                  "unit": "count",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition: Warp Scheduler (32 thread/clk)"
+                                  ]
+                                }
+                              },
+                              "contentId": "warp-scheduler"
+                            },
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/register-file",
+                              "name": "Register file",
+                              "level": "unit",
+                              "specs": {
+                                "capacity": {
+                                  "value": 65536,
+                                  "unit": "B",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition: Register File (16,384 x 32-bit) = 64 KiB"
+                                  ]
+                                }
+                              },
+                              "contentId": "register-file"
+                            },
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/tensor-core",
+                              "name": "Tensor core (4th gen)",
+                              "level": "unit",
+                              "specs": {
+                                "bf16DensePerClock": {
+                                  "value": 1024,
+                                  "unit": "FLOP/cycle",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA A100 Tensor Core GPU Architecture whitepaper: 256 FP16/FP32 FMA per clock per Tensor Core",
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), H100 SM Key Feature Summary: 2x the MMA rate of the A100 SM on equivalent data types"
+                                  ]
+                                },
+                                "fp8DensePerClock": {
+                                  "value": 2048,
+                                  "unit": "FLOP/cycle",
+                                  "confidence": "documented",
+                                  "sources": [
+                                    "NVIDIA A100 Tensor Core GPU Architecture whitepaper: 256 FP16/FP32 FMA per clock per Tensor Core",
+                                    "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), H100 SM Key Feature Summary: 4x the rate of A100 using FP8"
+                                  ]
+                                }
+                              },
+                              "contentId": "tensor-core"
+                            },
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/fp32-core",
+                              "name": "FP32 CUDA core",
+                              "level": "unit",
+                              "count": {
+                                "value": 32,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition; Table 3: 128 FP32 cores / SM"
+                                ]
+                              },
+                              "contentId": "cuda-core"
+                            },
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/int32-core",
+                              "name": "INT32 core",
+                              "level": "unit",
+                              "count": {
+                                "value": 16,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition; Table 3: 64 INT32 cores / SM"
+                                ]
+                              },
+                              "contentId": "int32-core"
+                            },
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/fp64-core",
+                              "name": "FP64 core",
+                              "level": "unit",
+                              "count": {
+                                "value": 16,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition; Table 3: 64 FP64 cores / SM"
+                                ]
+                              },
+                              "contentId": "fp64-core"
+                            },
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/ld-st",
+                              "name": "Load/store unit",
+                              "level": "unit",
+                              "count": {
+                                "value": 8,
+                                "unit": "count",
+                                "confidence": "documented",
+                                "sources": [
+                                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 7 (GH100 SM), per sub-partition"
+                                ]
+                              },
+                              "contentId": "ld-st"
+                            },
+                            {
+                              "id": "gpc-9tpc/tpc/sm/subpartition/sfu",
+                              "name": "Special function unit",
+                              "level": "unit",
+                              "contentId": "sfu"
+                            }
+                          ]
+                        },
+                        {
+                          "id": "gpc-9tpc/tpc/sm/l1-shared",
+                          "name": "L1 data cache / shared memory",
+                          "level": "unit",
+                          "specs": {
+                            "capacity": {
+                              "value": 262144,
+                              "unit": "B",
+                              "confidence": "documented",
+                              "sources": [
+                                "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): 256 KB of combined shared memory and L1 data cache per SM"
+                              ]
+                            },
+                            "sharedMemoryMax": {
+                              "value": 233472,
+                              "unit": "B",
+                              "confidence": "documented",
+                              "sources": [
+                                "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): shared memory configurable up to 228 KB per SM"
+                              ]
+                            }
+                          },
+                          "contentId": "l1-shared"
+                        },
+                        {
+                          "id": "gpc-9tpc/tpc/sm/tma",
+                          "name": "Tensor Memory Accelerator",
+                          "level": "unit",
+                          "contentId": "tma"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "l2",
+              "name": "L2 cache partition",
+              "level": "unit",
+              "count": {
+                "value": 2,
+                "unit": "count",
+                "confidence": "documented",
+                "sources": [
+                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22), Figure 6 (GH100 Full GPU): two L2 blocks",
+                  "Chips and Cheese, H100 articles: L2 in two partitions, the far one with almost twice the latency"
+                ]
+              },
+              "contentId": "l2"
+            },
+            {
+              "id": "memory-controller",
+              "name": "Memory controller (512-bit)",
+              "level": "unit",
+              "count": {
+                "value": 12,
+                "unit": "count",
+                "confidence": "documented",
+                "sources": [
+                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): full GH100 has 12 512-bit memory controllers"
+                ]
+              },
+              "enabled": {
+                "value": 10,
+                "unit": "count",
+                "confidence": "documented",
+                "sources": [
+                  "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): H100 SXM5 has 10 512-bit memory controllers"
+                ]
+              },
+              "contentId": "memory-controller"
+            },
+            {
+              "id": "gigathread-engine",
+              "name": "GigaThread engine",
+              "level": "unit",
+              "contentId": "gigathread-engine"
+            }
+          ]
+        },
+        {
+          "id": "hbm-site",
+          "name": "HBM3 stack site",
+          "level": "unit",
+          "count": {
+            "value": 6,
+            "unit": "count",
+            "confidence": "documented",
+            "sources": [
+              "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): full GH100 has 6 HBM3 or HBM2e stacks",
+              "ServeTheHome photos of the H100 SXM5 package (via TechSpot, \"Nvidia's Hopper H100 pictured\")"
+            ]
+          },
+          "enabled": {
+            "value": 5,
+            "unit": "count",
+            "confidence": "documented",
+            "sources": [
+              "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): H100 SXM5 has 5 HBM3 stacks"
+            ]
+          },
+          "specs": {
+            "capacity": {
+              "value": 17179869184,
+              "unit": "B",
+              "confidence": "documented",
+              "sources": [
+                "NVIDIA H100 Tensor Core GPU Architecture whitepaper (GTC22): H100 SXM5 has 80 GB HBM3 in 5 stacks",
+                "80 GB = 5 × 16 GiB HBM3 stacks"
+              ]
+            }
+          },
+          "contentId": "hbm-stack"
+        }
+      ]
+    }
+  ]
+}

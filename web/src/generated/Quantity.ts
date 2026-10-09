@@ -5,7 +5,8 @@ import type { Unit } from "./Unit";
 /**
  * A number as it leaves the core: value, unit, confidence and sources.
  *
- * Built only from a unit newtype and a `Provenance`, so there is no way to
- * emit a number without a unit and a confidence.
+ * Built from a unit newtype and a `Provenance`, or loaded from a data file
+ * that states all four fields (ADR 0009), so there is no way to emit a
+ * number without a unit and a confidence.
  */
 export type Quantity = { value: number, unit: Unit, confidence: Confidence, sources: Array<string>, };

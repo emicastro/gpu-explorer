@@ -2,13 +2,13 @@
 
 use std::collections::BTreeSet;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::units::Measure;
 
 /// How much to trust a number. Ordered from best to worst, so the worst of
 /// several inputs is their `max`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Confidence {
@@ -21,7 +21,7 @@ pub enum Confidence {
 }
 
 /// The unit tag of a serialized value, always the SI base unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Unit {
     #[serde(rename = "B")]
@@ -36,6 +36,10 @@ pub enum Unit {
     FlopsPerSec,
     #[serde(rename = "FLOP/B")]
     FlopsPerByte,
+    #[serde(rename = "Hz")]
+    Hertz,
+    #[serde(rename = "FLOP/cycle")]
+    FlopsPerCycle,
     #[serde(rename = "count")]
     Count,
 }
@@ -80,9 +84,11 @@ impl Provenance {
 
 /// A number as it leaves the core: value, unit, confidence and sources.
 ///
-/// Built only from a unit newtype and a `Provenance`, so there is no way to
-/// emit a number without a unit and a confidence.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// Built from a unit newtype and a `Provenance`, or loaded from a data file
+/// that states all four fields (ADR 0009), so there is no way to emit a
+/// number without a unit and a confidence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Quantity {
     value: f64,
@@ -115,6 +121,20 @@ impl Quantity {
 
     pub fn sources(&self) -> &[String] {
         &self.sources
+    }
+
+    pub fn provenance(&self) -> Provenance {
+        Provenance::new(self.confidence, &self.sources)
+    }
+
+    /// The value as `M`, or `None` if the unit is not `M`'s or the value is
+    /// not valid for `M`.
+    pub fn get<M: Measure>(&self) -> Option<M> {
+        if self.unit == M::UNIT {
+            M::from_value(self.value)
+        } else {
+            None
+        }
     }
 }
 

@@ -54,7 +54,7 @@ tools/profiling/  scripts de perfilado (D14)
 
 ### 3.2 Archivos de datos (ADR 0002)
 
-- **`data/hardware/h100-sxm.json`:** un árbol `HwNode` (brief §6.2) con `specs: Record<string, QuantityIn>`, donde cada valor trae `value`, `unit`, `confidence` y `sources`.
+- **`data/hardware/h100-sxm.json`:** un árbol `HwNode` (brief §6.2) con `specs: Record<string, Quantity>`, donde cada valor trae `value`, `unit` (en unidades base), `confidence` y `sources` ([ADR 0009](adr/0009-data-quantities-in-base-units.md)). `count` y `enabled` también son `Quantity`; las variantes que no se repiten parejo (los GPCs) son nodos separados con su propio `count` ([ADR 0008](adr/0008-hardware-tree-shape.md)).
   - Niveles: `board`, `package`, `die`, `gpc`, `tpc`, `sm`, `subpartition`, `unit`.
   - `count` / `enabled` resuelven los SMs y los sitios de HBM deshabilitados. El reparto por GPC es `simplified`: 66 TPCs en 8 GPCs, con 6 GPCs de 8 TPCs y 2 de 9, sumando 66. El sitio de HBM inactivo se elige arbitrariamente y queda marcado.
   - Valores de partida: brief D1. Lo derivable (pico BF16, ridge point) no se guarda: lo calcula el núcleo y lo verifica un test.
@@ -65,7 +65,7 @@ tools/profiling/  scripts de perfilado (D14)
 ### 3.3 API del núcleo
 
 ```rust
-pub fn hardware(id: &str) -> Result<HwTree, CoreError>;
+pub fn hardware(id: &str) -> Result<HwNode, CoreError>;  // la raíz del árbol
 pub fn model(id: &str) -> Result<ModelConfig, CoreError>;
 pub fn evaluate(hw: &str, model: &str, scenario: &Scenario) -> Result<StepPlan, CoreError>;
 ```
