@@ -53,9 +53,9 @@ Los nombres `triton_*` los genera Inductor; qué ops fusiona cada uno se confirm
 | 2 | GEMM (`aten::mm` → cuBLAS) | proyección QKV | Una sola GEMM |
 | 3 | `triton_red_fused_1` / `_3` | QK-norm + RoPE sobre Q y K | Fusionadas por Inductor, aunque el pass explícito de vLLM esté apagado en CUDA |
 | 4 | `reshape_and_cache_flash_kernel` | escritura al KV cache | Kernel propio de vLLM |
-| 5 | `aten::copy_` | (solo decode) reordenamiento de Q | Probablemente el intercambio de layout de FA2 para GQA en decode; verificar |
+| 5 | `aten::copy_` | (solo decode) reordenamiento de Q | Intercambio de layout de FA2 para GQA cuando `max_seqlen_q == 1`. Confirmado: lo lanza `_vllm_fa2_C::varlen_fwd` → `aten::reshape` → `aten::clone`. **No existe con FA3** (PackGQA lo hace dentro del kernel) |
 | 6 | `flash_fwd_splitkv_kernel` (+ `flash_fwd_splitkv_combine_kernel` en decode) | atención | Split-KV: en decode, batch 4, grid `[1, 2, 32]` = 2 splits × 32 (B · n_kv) |
-| 7 | `aten::copy_` | (solo decode) reordenamiento de la salida | Ver 5 |
+| 7 | `aten::copy_` | (solo decode) reordenamiento de la salida | Copia de vuelta a la salida, dentro de `_vllm_fa2_C::varlen_fwd`. Ver 5 |
 | 8 | GEMM | proyección O | |
 | 9 | `triton_red_fused_fused_add_rms_norm_0` | suma residual + RMSNorm post-atención | |
 | 10 | GEMM (+ `splitKreduce_kernel` en decode) | gate + up | En decode cuBLAS eligió **split-K** (4 partes) y un kernel extra de reducción |
@@ -70,6 +70,6 @@ Al inicio de cada paso corren ~8 kernels chicos de preparación de inputs (`_pre
 
 1. **El límite entre kernels no coincide con el límite entre capas.** La suma residual del final de la capa *i* va fusionada con la RMSNorm de entrada de la capa *i+1*. La UI tiene que mostrarlo así.
 2. **Fusiones confirmadas:** residual + RMSNorm; QK-norm + RoPE; embeddings + primera RMSNorm; SiLU·mul en su propio kernel; QKV en una GEMM; escritura al KV aparte.
-3. **Kernels por capa:** 10 en prefill y ~13 en decode (por los `copy_` y el `combine` del split-KV y el `splitKreduce` de split-K).
+3. **Kernels por capa:** 10 en prefill y ~13 en decode (por los `copy_` y el `combine` del split-KV y el `splitKreduce` de split-K). En H100 con FA3 los dos `copy_` desaparecen.
 4. **Split-KV aparece incluso a batch 4** con contexto de 256 tokens: la lección de D9 se ve en una traza real.
 5. **Split-K en GEMMs de decode:** con M chico, cuBLAS parte la dimensión K para llenar la GPU. El modelo de tiling ya contempla `split_k`; hay que mostrarlo.

@@ -43,8 +43,8 @@ Números de partida (**verificar todos contra el whitepaper antes de usarlos**):
 | Parámetro | Valor | Nota |
 |---|---|---|
 | SMs | 132 (8 GPCs, 66 TPCs) | El die completo tiene 144 SMs / 72 TPCs. Los SMs deshabilitados varían por unidad, así que el reparto por GPC no es parejo → `simplified` |
-| HBM3 | 80 GB, ~3.35 TB/s | 5 stacks activos en el package (verificar) |
-| L2 | 50 MB | Dividida en dos particiones (verificar detalle) |
+| HBM3 | 80 GB, ~3.35 TB/s | 6 sitios de HBM en el package, 5 activos (fotos de ServeTheHome); 10 controladores de 512 bits (5120 bits). El die completo tiene 12. No se sabe qué sitio queda inactivo → `simplified` |
+| L2 | 50 MB | El die completo tiene 60 MB. Dos particiones: la lejana tarda casi el doble (Chips and Cheese, medido en H100 PCIe). Sin cifras en ns |
 | Shared memory / L1 por SM | 256 KB combinados, hasta 228 KB de shared memory | |
 | Register file por SM | 256 KB (64 KB por sub-partición) | |
 | Tensor cores | 4 por SM (1 por sub-partición) | |
@@ -117,7 +117,11 @@ Notas:
 
 ### D8 — Precisión: pesos y KV como perillas separadas [cerrada]
 
-- **Pesos:** BF16 / FP8. FP8 como lo corre vLLM en H100: **W8A8** (confirmado en v0.31.0: GEMMs CUTLASS `scaled_mm` para sm90 con las activaciones cuantizadas a FP8 en tiempo de ejecución). Ojo: el checkpoint oficial `Qwen3-8B-FP8` usa cuantización por bloques de 128, que va por otro camino de kernels que el FP8 por tensor (verificar cuál). W8A16 se muestra como variante explicativa:
+- **Pesos:** BF16 / FP8. FP8 como lo corre vLLM en H100: **W8A8**, por uno de dos caminos según el checkpoint (confirmado en el código de v0.31.0):
+  - **FP8 por tensor** (p. ej. `--quantization fp8` sobre el checkpoint BF16): GEMMs CUTLASS `scaled_mm` para sm90, con las activaciones cuantizadas a FP8 en tiempo de ejecución.
+  - **FP8 por bloques** (checkpoint oficial `Qwen3-8B-FP8`: pesos en bloques de 128×128, activaciones dinámicas en grupos de 1×128): vLLM elige `FlashInferFp8DeepGEMMDynamicBlockScaledKernel`. Con **M < 32** corre el kernel *swapAB* de FlashInfer (port de TensorRT-LLM del DeepGEMM original). Con **M ≥ 32** corre **DeepGEMM** (`fp8_gemm_nt`, que vLLM trae incluido en el wheel). Los dos van precedidos de un kernel de cuantización de la activación. La rama se elige con `torch.cond` y ambas quedan capturadas en el grafo. Tiles en §7.2.
+- **FP8 por defecto en v1: por bloques** (el checkpoint oficial, lo que se descarga y se corre en la práctica). El FP8 por tensor queda como alternativa.
+- W8A16 se muestra como variante explicativa, junto a W8A8:
   - **W8A16:** pesos en FP8 (mitad de bytes desde HBM), multiplicación en BF16. Gana en decode, no en prefill. En el roofline: el punto se mueve a la derecha.
   - **W8A8:** pesos y activaciones en FP8, multiplicación en FP8. Ahorra bytes **y** duplica el pico de cómputo. En el roofline: el punto se mueve a la derecha y el techo sube.
 - **KV cache:** BF16 / FP8. Es la palanca principal en contextos largos.
@@ -127,7 +131,7 @@ Notas:
 
 - **v1:** contexto uniforme (una sola perilla), pero el núcleo representa internamente una **lista de largos por request**.
 - **v1.1:** presets de contextos mezclados ("chat típico", "un documento RAG largo + muchos cortos") sin tocar el núcleo.
-- **Lección de split-KV / FlashDecoding (obligatoria):** el modelo de tiling la muestra incluso con contexto uniforme. En decode a batch 1, un kernel de atención que paraleliza solo por (request × cabeza) lanza ~32 bloques y deja ocupados ~24 % de los 132 SMs, mientras cada bloque recorre todo el contexto. Split-KV parte el contexto en trozos para llenar la GPU. Con contextos mezclados aparece la segunda mitad del problema: un request largo deja SMs trabajando mientras otros esperan.
+- **Lección de split-KV / FlashDecoding (obligatoria):** el modelo de tiling la muestra incluso con contexto uniforme. En decode a batch 1, un kernel de atención que paraleliza solo por (request × cabeza) lanza ~32 bloques y deja ocupados ~24 % de los 132 SMs, mientras cada bloque recorre todo el contexto. FA3 agrupa las 4 Q de cada cabeza KV en un mismo bloque (PackGQA), así que sin split serían 8 bloques (~6 %). Split-KV parte el contexto en trozos para llenar la GPU: con 8k de contexto, FA3 usa 13 splits y lanza 104 bloques (§7.2). Con contextos mezclados aparece la segunda mitad del problema: un request largo deja SMs trabajando mientras otros esperan.
 - **Por qué:** en roofline puro, un batch mezclado equivale a uno uniforme con la misma suma de contextos. La diferencia solo aparece en el reparto entre SMs.
 
 ### D10 — Precisión del dato visible
@@ -297,14 +301,15 @@ Fuera del loop: lookup de embeddings, RMSNorm final, LM head (GEMM `h × V`), sa
 
 Kernels: el perfil de fusión de vLLM v0.31.0 en H100 agrupa estas ops (ver D6). Lo que se sabe del código:
 
-- GEMMs: QKV (1), O (1), gate+up (1), down (1) por capa. BF16 → cuBLAS vía PyTorch; FP8 → CUTLASS.
-- Atención: FlashAttention 3; la escritura al KV es un kernel aparte.
+- GEMMs: QKV (1), O (1), gate+up (1), down (1) por capa. BF16 → cuBLAS vía PyTorch. FP8 por tensor → CUTLASS. FP8 por bloques → FlashInfer swapAB (M < 32) o DeepGEMM (M ≥ 32). En los dos caminos FP8 por bloques, cada GEMM viene precedida de un kernel de cuantización de la activación (ver D8).
+- Atención: FlashAttention 3; la escritura al KV es un kernel aparte. En decode con CUDA graphs, vLLM le pasa a FA3 un tope de 32 splits. Por eso el kernel `combine` se lanza siempre, aunque el split dinámico de algún request termine en 1. El reparto de splits lo calcula un kernel de preparación (`prepare_varlen_num_blocks`) **una vez por paso**, no por capa, y se reutiliza en las 36 capas.
+- Los dos `copy_` que aparecen alrededor de la atención en la traza de la RTX 3070 son **solo de FA2**: confirmado en la traza, los lanza `_vllm_fa2_C::varlen_fwd`. Cuando `max_seqlen_q == 1` y hay GQA, FA2 transpone Q de `(b, 1, n_q, d)` a `(b, n_q/n_kv, n_kv, d)` (un `reshape` que hace un `clone`) y después copia la salida de vuelta. FA3 resuelve lo mismo dentro del kernel con PackGQA, así que **en H100 esos dos kernels no existen**.
 - Elementwise: kernels Triton generados por Inductor. Agrupación medida en la traza de D14 (`data/traces/vllm-0.31.0_qwen3-8b-3layers_rtx3070/`):
   1. suma residual de la capa anterior + RMSNorm de entrada (en la capa 0: lookup de embeddings + RMSNorm)
   2. GEMM QKV
   3. QK-norm + RoPE (un kernel)
   4. escritura al KV (`reshape_and_cache_flash`)
-  5. atención con split-KV (+ kernel `combine` en decode; en decode también dos `copy_` de reordenamiento alrededor)
+  5. atención con split-KV (+ kernel `combine` en decode; en la traza de FA2 también dos `copy_` de reordenamiento alrededor, que no existen con FA3)
   6. GEMM O
   7. suma residual + RMSNorm post-atención
   8. GEMM gate+up (en decode, cuBLAS usa split-K + kernel de reducción)
@@ -357,9 +362,42 @@ type StepPlan = {
 ### 7.2 Tiling y ondas
 
 - GEMM: `bloques = ⌈M/BM⌉ · ⌈N/BN⌉ · split_k`.
-  - **FP8 (CUTLASS):** los tiles son públicos. `scaled_mm_sm90_fp8_dispatch.cuh` elige la configuración según M, N y K; p. ej. `128×128×128` por defecto, `64×128×128` para M ≤ 128, `64×16×256` para M chicos con N chico, `256×128×128` para M y K grandes. `documented` para la versión fijada.
+  - **FP8 por tensor (CUTLASS):** los tiles son públicos. `scaled_mm_sm90_fp8_dispatch.cuh` elige la configuración según M, N y K; p. ej. `128×128×128` por defecto, `64×128×128` para M ≤ 128, `64×16×256` para M chicos con N chico, `256×128×128` para M y K grandes. `documented` para la versión fijada.
+  - **FP8 por bloques, M < 32 (FlashInfer swapAB):** intercambia A y B: los N del peso van en la dimensión M de la MMA. Heurística cerrada (`get_best_gemm_config` en FlashInfer 0.7.0.post1, `csrc/nv_internal/tensorrt_llm/deep_gemm/jit_utils.cuh`):
+    - `BM` (sobre N) = 128 si N > 64; `BN` (sobre los tokens) ∈ {16, 24, …, 128}; `BK` = 128.
+    - Elige la combinación con menos ondas; a igualdad, la de mayor uso de la última onda, y si sigue el empate, el `BN` más chico. A batch 1 sale `128×16×128`.
+    - Grid persistente de 132 CTAs, sin split-K, 4 a 8 etapas según la shared memory.
+    - Tiles de Qwen3-8B a batch 1: QKV 48, O 32, gate+up 192 (2 ondas), down 32. **Tres de las cuatro GEMMs usan menos de la mitad de los SMs.** `documented`.
+  - **FP8 por bloques, M ≥ 32 (DeepGEMM `fp8_gemm_nt`, kernel `1D2D` de sm90):** heurística cerrada en `csrc/jit_kernels/heuristics/sm90.hpp` (vllm-project/DeepGEMM `e1f418c`):
+    - Candidatos: `BM` ∈ {64, 128, 256}, más 16 y 32 cuando M ≤ 16 o M ≤ 32. `BN` ∈ {16, 32, …, 192}. `BK` = 128. Cluster 1×1, 2×1 o 1×2.
+    - Filtros: al menos una de las dos dimensiones del tile ≤ 128, y al menos 3 o 4 etapas de pipeline.
+    - Elige el mínimo de `max(ciclos_L1, ciclos_L2) / eficiencia_de_onda`, con un modelo propio de bytes por bloque. Se puede reimplementar tal cual en el núcleo. `documented`.
+    - Grid persistente de 132 CTAs.
   - **BF16 (cuBLAS):** los tiles los elige la heurística cerrada de cuBLAS; no hay fuente pública. Usar tiles representativos de Hopper (p. ej. los de CUTLASS) y marcar `simplified`.
-- Atención de decode: `bloques = B · cabezas · splits`. FA3 paraleliza por request y cabeza KV (agrupando las Q de GQA) y elige `splits` (split-KV) con una heurística propia: leer la heurística de FA3 en la versión que trae vLLM v0.31.0.
+- Atención de decode (FA3, commit `9cd61de` de vllm-project/flash-attention que fija vLLM v0.31.0):
+  - **Tiles:** el decode de Qwen3 (`d = 128`, `n_q/n_kv = 4`) cumple `seqlen_q · n_q/n_kv ≤ 64`, así que usa un solo warpgroup de MMA, con tile `64 × 128` (causal) y PackGQA (las 4 Q de una cabeza KV en el mismo tile).
+  - **Bloques de trabajo:** `B · n_kv · splits`, sobre un grid persistente de 132 CTAs (en varlen, FA3 siempre usa el scheduler persistente).
+  - **Splits en decode con CUDA graphs:** los decide el kernel de preparación (`flash_prepare_scheduler.cu`), con `nb = ⌈S/128⌉` bloques de KV por request:
+    ```
+    total     = Σ_requests nb
+    por_SM    = ⌈1.1 · total · n_kv / SMs⌉
+    splits    = clamp(⌈nb / por_SM⌉, 1, 32)       // 32 = tope de vLLM con CUDA graphs
+    ```
+    Con más de 992 requests, siempre 1 split.
+  - **Fuera de CUDA graphs** (prefill grande): FA3 usa `num_splits_heuristic` de `hopper/heuristics.h`. Si los tiles ya llenan ≥ 80 % de los SMs, no parte (salvo con KV de más de 50 MB por cabeza). Si no, busca la menor cantidad de splits con ≥ 85 % de la mejor eficiencia de onda.
+  - **Ejemplos para Qwen3-8B** (`n_kv = 8`):
+
+    | B | S | splits | bloques | SMs ocupados |
+    |---|---|---|---|---|
+    | 1 | 256 | 2 | 16 | 12 % |
+    | 1 | 1k | 8 | 64 | 48 % |
+    | 1 | 4k | 11 | 88 | 67 % |
+    | 1 | 8k | 13 | 104 | 79 % |
+    | 1 | 32k–128k | 15 | 120 | 91 % |
+    | 8 | 8k | 2 | 128 | 97 % |
+    | 32 | 8k | 1 | 256 | 2 ondas |
+
+    El margen de 1.1 hace que a batch 1 el tope práctico quede en ~15 splits (≈ `SMs / (1.1 · n_kv)`), sin llegar a 132 bloques.
 - `ondas = ⌈bloques / (SMs · bloques_por_SM)⌉`; `eficiencia_de_onda = bloques / (ondas · SMs · bloques_por_SM)`.
 - `bloques_por_SM` según shared memory, registros y threads por bloque contra los límites del SM.
 
@@ -389,14 +427,17 @@ Tests de cordura obligatorios en el núcleo:
 | Contexto donde el KV iguala a los pesos, batch 1, BF16 | ~102k (8B), ~62k (30B-A3B) |
 | KV de un request de 32k, 8B, BF16 | 4.5 GiB |
 | Pico BF16 derivado | SMs × FLOPs/clk/SM × reloj ≈ 989 TFLOPS |
-| Atención de decode sin split-KV, batch 1 | ~32 bloques → ~24 % de SMs ocupados (`simplified`) |
+| Atención de decode sin split-KV, batch 1 | 8 bloques con PackGQA (~6 % de SMs); 32 sin agrupar GQA (~24 %) |
+| Splits de FA3 en decode, batch 1, 8B | 13 splits / 104 bloques a 8k; 15 / 120 a 32k o más (§7.2) |
+| Tiles FP8 por bloques a batch 1, 8B | QKV 48, O 32, gate+up 192, down 32 (tile `128×16`) |
 | Expertos únicos (ruteo uniforme) | 8 / ~82 / ~126 a M = 1 / 16 / 64 |
 
 Además:
 
 - Cruzar los techos con benchmarks públicos de vLLM en H100: los reales deben quedar por debajo de la cota inferior y cerca del modo realista.
   - Dato disponible: issue vllm#25915 (H100, `vllm bench throughput`, entrada 1024 / salida 2048): Qwen3-8B BF16 ~4.5–5.4k tok/s de salida y FP8 casi igual (v0.8.5 y v0.10.2). Útil como caso: a batch alto, FP8 de pesos casi no ayuda.
-  - No se encontró un número público confiable de decode a batch 1 de Qwen3-8B con vLLM en H100. Candidato a revisar: SemiAnalysis InferenceX.
+  - Decode a batch 1: GPUStack, "Optimizing Qwen3-8B Latency on NVIDIA H100 GPUs": H100 SXM, vLLM **v0.11.0**, `Qwen/Qwen3-8B` en BF16, ShareGPT (~233 tokens de entrada y ~221 de salida de media), concurrencia 1. TPOT medio **7.28 ms** (~137 tok/s), P99 7.52 ms. Es ~62 % del techo de 221 tok/s: ancho de banda efectivo ~2.1 TB/s contando todo el paso. Primer ancla para el modo realista. Ojo: es una versión vieja de vLLM.
+  - SemiAnalysis InferenceX no publica Qwen3-8B en H100: no sirve para este caso.
 - Cruzar resultados por capa con LLM-Viewer.
 - Cada número de la UI muestra confianza y fuente.
 
@@ -428,10 +469,16 @@ Entrenamiento, simulación por ciclos, múltiples GPUs, cuantización por debajo
 
 ## 12. Preguntas abiertas
 
-- **Checkpoint FP8:** ¿por qué camino de kernels va el FP8 por bloques de `Qwen3-8B-FP8` en v0.31.0 (CUTLASS blockwise, DeepGEMM, Triton)? Define los tiles en FP8.
-- **Split-KV de FA3:** leer la heurística de `num_splits` en la versión de FA3 que trae vLLM v0.31.0.
-- **Benchmark de batch 1:** falta un número público de decode a batch 1 de Qwen3-8B en H100 con vLLM. Revisar SemiAnalysis InferenceX.
-- **Disposición física:** no hay floorplan público detallado de GH100 (el de TechInsights es pago). Plan: topología del diagrama de bloques del whitepaper (8 GPCs, L2, controladores) + L2 en dos particiones (Chips and Cheese) + package con el die al centro y 6 sitios de HBM (5 activos en la versión de 80 GB; verificar) a partir de fotos públicas del módulo. Todo `simplified`.
+- **Sin traza en H100, quedan por confirmar** (`simplified` hasta entonces):
+  - Que Inductor no fusione la cuantización 1×128 de la activación con la RMSNorm anterior en el camino DeepGEMM. En el camino de FlashInfer no puede: la cuantización ocurre dentro del op.
+  - Si 32 CTAs (O y down a batch 1 en FP8 por bloques) alcanzan para saturar el HBM. Afecta directamente el tiempo realista de esas GEMMs.
+- **Disposición física:** no hay floorplan público detallado de GH100 (el de TechInsights es pago). Plan confirmado:
+  - Topología del diagrama de bloques del whitepaper: 8 GPCs, L2, 12 controladores de 512 bits en el die completo (10 activos en la H100 SXM).
+  - L2 en dos particiones (Chips and Cheese).
+  - Package con el die al centro y 6 sitios de HBM, 5 activos (fotos de ServeTheHome).
+  - No se sabe qué sitio queda inactivo. Todo `simplified`.
+
+Resueltas en esta revisión, con los resultados en las secciones citadas: el camino FP8 por bloques y el FP8 por defecto de v1 (D8, §7.2), la heurística de split-KV de FA3 (§7.2), el benchmark a batch 1 (§8) y los `copy_` de la traza (§6.5).
 
 ## Fuentes de partida
 
@@ -440,6 +487,9 @@ Entrenamiento, simulación por ciclos, múltiples GPUs, cuantización por debajo
 - Luo et al., "Benchmarking and Dissecting the Nvidia Hopper GPU Architecture" (2024): latencias y anchos de banda medidos
 - `config.json` oficiales: Qwen/Qwen3-8B y Qwen/Qwen3-30B-A3B en Hugging Face
 - Código de vLLM v0.31.0: `vllm/model_executor/models/qwen3.py`, `vllm/config/vllm.py` (niveles de optimización), `vllm/platforms/cuda.py` (prioridad de backends), `vllm/v1/attention/backends/fa_utils.py` (versión de FA), `csrc/libtorch_stable/quantization/w8a8/cutlass/c3x/scaled_mm_sm90_fp8_dispatch.cuh` (tiles FP8)
+- Código de FA3: vllm-project/flash-attention `9cd61de` (`hopper/heuristics.h`, `hopper/flash_prepare_scheduler.cu`, `hopper/tile_size.h`). FP8 por bloques: `vllm/model_executor/kernels/linear/__init__.py` (`_POSSIBLE_FP8_BLOCK_KERNELS`), FlashInfer 0.7.0.post1 (`csrc/nv_internal/tensorrt_llm/deep_gemm/jit_utils.cuh`), vllm-project/DeepGEMM `e1f418c` (`csrc/jit_kernels/heuristics/sm90.hpp`)
+- Batch 1: GPUStack, "Optimizing Qwen3-8B Latency on NVIDIA H100 GPUs" (docs.gpustack.ai/2.0/performance-lab/qwen3-8b/h100-latency/)
+- Package: ServeTheHome, fotos de la H100 SXM5 (vía TechSpot, "Nvidia's Hopper H100 pictured")
 - Calibración: Kempner Institute `nvidia-hpc-benchmarks` (STREAM en H100); NVIDIA, "New cuBLAS 12.0 Features and Matrix Multiplication Performance on NVIDIA Hopper GPUs"; issue vllm-project/vllm#25915
 - Chips and Cheese, artículos sobre H100 (L2 en dos particiones)
 - LLM-Viewer (roofline por capa), "Transformer Inference Arithmetic" (kipply)
