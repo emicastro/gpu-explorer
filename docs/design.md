@@ -58,7 +58,7 @@ tools/profiling/  scripts de perfilado (D14)
   - Niveles: `board`, `package`, `die`, `gpc`, `tpc`, `sm`, `subpartition`, `unit`.
   - `count` / `enabled` resuelven los SMs y los sitios de HBM deshabilitados. El reparto por GPC es `simplified`: 66 TPCs en 8 GPCs, con 6 GPCs de 8 TPCs y 2 de 9, sumando 66. El sitio de HBM inactivo se elige arbitrariamente y queda marcado.
   - Valores de partida: brief D1. Lo derivable (pico BF16, ridge point) no se guarda: lo calcula el núcleo y lo verifica un test.
-- **`data/models/qwen3-8b.json`:** los campos de `config.json` de Qwen/Qwen3-8B con los mismos nombres (brief §6.3), más un bloque `quantization_variants` con los esquemas FP8: `block` (`weight_block_size: [128, 128]`, activación 1×128 dinámica) y `per_tensor`.
+- **`data/models/qwen3-8b.json`:** el `config.json` de Qwen/Qwen3-8B tal cual, bajo `config`, con una sola `provenance` para todo el archivo ([ADR 0010](adr/0010-model-file-provenance.md)). Lo acompaña un bloque `quantization_variants` con los esquemas FP8, cada uno con su confianza y sus fuentes: `block` (pesos en bloques de 128×128, activación 1×128 dinámica) y `per_tensor` (`--quantization fp8_per_tensor` en vLLM v0.31.0: escala estática por tensor en los pesos, dinámica por token en la activación).
 - **`data/fusion/vllm-0.31.0-h100.json`:** el perfil de fusión (§4.1).
 - Un test parsea cada archivo con `deny_unknown_fields` y valida invariantes, p. ej. la suma de `enabled` por nivel.
 

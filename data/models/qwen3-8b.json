@@ -1,0 +1,79 @@
+{
+  "id": "qwen3-8b",
+  "name": "Qwen3-8B",
+  "provenance": {
+    "confidence": "documented",
+    "sources": [
+      "Qwen/Qwen3-8B config.json, revision b968826 (https://huggingface.co/Qwen/Qwen3-8B/blob/b968826d9c46dd6066d109eabc6255188de91218/config.json)"
+    ]
+  },
+  "config": {
+    "architectures": [
+      "Qwen3ForCausalLM"
+    ],
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "bos_token_id": 151643,
+    "eos_token_id": 151645,
+    "head_dim": 128,
+    "hidden_act": "silu",
+    "hidden_size": 4096,
+    "initializer_range": 0.02,
+    "intermediate_size": 12288,
+    "max_position_embeddings": 40960,
+    "max_window_layers": 36,
+    "model_type": "qwen3",
+    "num_attention_heads": 32,
+    "num_hidden_layers": 36,
+    "num_key_value_heads": 8,
+    "rms_norm_eps": 1e-06,
+    "rope_scaling": null,
+    "rope_theta": 1000000,
+    "sliding_window": null,
+    "tie_word_embeddings": false,
+    "torch_dtype": "bfloat16",
+    "transformers_version": "4.51.0",
+    "use_cache": true,
+    "use_sliding_window": false,
+    "vocab_size": 151936
+  },
+  "quantization_variants": {
+    "block": {
+      "fmt": "e4m3",
+      "weight_scale": {
+        "kind": "block",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "activation_scheme": "dynamic",
+      "activation_scale": {
+        "kind": "group",
+        "size": [
+          1,
+          128
+        ]
+      },
+      "confidence": "documented",
+      "sources": [
+        "Qwen/Qwen3-8B-FP8 config.json quantization_config, revision 220b46e (https://huggingface.co/Qwen/Qwen3-8B-FP8/blob/220b46e3b2180893580a4454f21f22d3ebb187d3/config.json)",
+        "vLLM v0.31.0 vllm/model_executor/layers/quantization/fp8.py: dynamic activation quantization with GroupShape(1, weight_block_size[0])"
+      ]
+    },
+    "per_tensor": {
+      "fmt": "e4m3",
+      "weight_scale": {
+        "kind": "tensor"
+      },
+      "activation_scheme": "dynamic",
+      "activation_scale": {
+        "kind": "token"
+      },
+      "confidence": "documented",
+      "sources": [
+        "vLLM v0.31.0 vllm/model_executor/layers/quantization/online/fp8.py, Fp8PerTensorOnlineLinearMethod (--quantization fp8_per_tensor on the BF16 checkpoint): static per-tensor weight scale; dynamic per-token activation scale when CUTLASS FP8 is supported (kFp8DynamicTokenSym)"
+      ]
+    }
+  }
+}

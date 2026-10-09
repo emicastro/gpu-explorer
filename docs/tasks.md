@@ -22,7 +22,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cargo test -p gpuviz-core --features ts && git diff --exit-code web/src/generated && cargo clippy --all-targets --all-features -- -D warnings`
 - [x] **2.2 Datos de H100 SXM.** `data/hardware/h100-sxm.json` (árbol completo hasta `unit`, con valores del brief D1 y sus fuentes; reparto de TPCs `simplified`; 6 sitios de HBM con 5 activos), un loader con `include_str!` y `deny_unknown_fields`. Tests: 132 SMs habilitados, 66 TPCs, 8 GPCs, 10 controladores activos; pico BF16 derivado ≈ 989 TFLOPS (±1 %); ridge ≈ 295 BF16 y ≈ 590 FP8. (R1, R8; §3.2; ADR 0002)
   Check: `cargo test -p gpuviz-core hardware`
-- [ ] **2.3 Config de Qwen3-8B.** `data/models/qwen3-8b.json` (campos de `config.json` más `quantization_variants`). Tests del brief §8: 8.19 B parámetros (6.95 B sin embeddings), 147 456 bytes de KV por token en BF16, ~15.1 GB de pesos leídos por decode en BF16, KV de un request de 32k = 4.5 GiB. (R1, R5; §3.2)
+- [x] **2.3 Config de Qwen3-8B.** `data/models/qwen3-8b.json` (campos de `config.json` más `quantization_variants`). Tests del brief §8: 8.19 B parámetros (6.95 B sin embeddings), 147 456 bytes de KV por token en BF16, ~15.1 GB de pesos leídos por decode en BF16, KV de un request de 32k = 4.5 GiB. (R1, R5; §3.2)
   Check: `cargo test -p gpuviz-core model`
 
 ## 3. Núcleo: el modelo

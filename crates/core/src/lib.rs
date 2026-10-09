@@ -5,6 +5,7 @@
 
 pub mod error;
 pub mod hardware;
+pub mod model;
 pub mod quantity;
 pub mod units;
 
