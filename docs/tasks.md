@@ -13,7 +13,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && test -f LICENSE-MIT -a -f LICENSE-APACHE -a -f LICENSE-CONTENT`
 - [x] **1.2 App web.** `web/` con pnpm, Vite, React, TS estricto, R3F, drei, zustand, ESLint, Vitest y Playwright (Chromium). Una página con un `<Canvas>` y una caja. Un test unitario trivial y un e2e que carga la página y falla si hay errores en la consola. `package.json` con `"license": "MIT OR Apache-2.0"`. (R17; §2, §6.1; ADR 0004, 0006)
   Check: `cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm e2e`
-- [ ] **1.3 Pipeline WASM de punta a punta.** `scripts/build-wasm.sh` (verifica la versión de `wasm-bindgen-cli` contra el pin y escribe en `web/src/wasm/`, ignorado por git). El núcleo expone `version()`; `web/src/core/index.ts` lo envuelve; un test de Vitest lo llama con `initSync`. `scripts/verify.sh` con la receta completa de §2 (los pasos que todavía no existen se saltean con un aviso explícito). (§2, §5; ADR 0003)
+- [x] **1.3 Pipeline WASM de punta a punta.** `scripts/build-wasm.sh` (verifica la versión de `wasm-bindgen-cli` contra el pin y escribe en `web/src/wasm/`, ignorado por git). El núcleo expone `version()`; `web/src/core/index.ts` lo envuelve; un test de Vitest lo llama con `initSync`. `scripts/verify.sh` con la receta completa de §2 (los pasos que todavía no existen se saltean con un aviso explícito). (§2, §5; ADR 0003)
   Check: `scripts/verify.sh`
 
 ## 2. Núcleo: tipos y datos
