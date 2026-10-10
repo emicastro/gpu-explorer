@@ -49,7 +49,21 @@ Dos formas de escalar FP8. Por tensor: una escala para todo el tensor. Por bloqu
 Truco de GEMM para M chico (pocos tokens): intercambia los operandos para que las filas del peso llenen la dimensión grande del tile y los tokens la chica. Lo usa FlashInfer en FP8 por bloques con M < 32.
 
 **Fusión de kernels**:
-Juntar varias ops lógicas (p. ej. suma residual + RMSNorm) en un solo kernel para no ir y volver a HBM entre ellas.
+Juntar varias ops lógicas (p. ej. suma residual + RMSNorm) en un solo kernel para no ir y volver a HBM entre ellas. El kernel fusionado cuenta solo los bytes que cruzan su frontera; la diferencia con la suma de sus ops es el ahorro por fusión (fusion saving) que muestra la UI (ADR 0012).
+_Avoid_: "merge", "kernel combinado"
+
+**Stream residual**:
+El vector por token que atraviesa todas las capas; atención y MLP le suman su salida. El kernel residual + RMSNorm escribe el residual nuevo a HBM aunque lo use adentro, porque la siguiente suma residual lo vuelve a leer.
+
+**RMSNorm**:
+Normalización que divide cada vector de activaciones por su raíz cuadrática media y lo escala por un peso aprendido. Qwen3 la aplica antes de atención, antes del MLP, al final del modelo y a Q y K (QK-norm).
+_Avoid_: "LayerNorm" (resta la media; Qwen3 no la usa)
+
+**Intermedio**:
+Tensor que una op produce y otra consume dentro del mismo kernel fusionado, sin pasar por HBM. Solo lo es si ninguna op de otro kernel lo lee (ADR 0012).
+
+**Tensor persistente**:
+Tensor que se escribe a HBM siempre, se fusione como se fusione, porque tiene que sobrevivir al paso: KV cache y tokens muestreados (ADR 0012).
 
 **torch.compile / Inductor**:
 Compilador de PyTorch que vLLM usa por defecto. Inductor genera kernels Triton que fusionan ops elementwise (norms, residual, activaciones); por eso esos kernels no están escritos a mano en vLLM.

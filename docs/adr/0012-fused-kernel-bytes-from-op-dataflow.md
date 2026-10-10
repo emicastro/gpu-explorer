@@ -1,6 +1,6 @@
 # 0012 — Fused-kernel bytes from op-level tensor dataflow
 
-Status: proposed
+Status: accepted
 Date: 2026-10-10
 
 ## Context
