@@ -42,7 +42,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 ## 4. 3D: primer hito
 
-- [ ] **4.1 Base de la escena y del store.** Store de zustand con sus cinco slices (§6.1). `<Scene>` con cámara, luces y fondo oscuro. Hook `window.__gpuviz` (solo en builds de prueba). Helpers de Playwright para leer el estado del store desde el e2e. (§6.1; ADR 0004)
+- [x] **4.1 Base de la escena y del store.** Store de zustand con sus cinco slices (§6.1). `<Scene>` con cámara, luces y fondo oscuro. Hook `window.__gpuviz` (solo en builds de prueba). Helpers de Playwright para leer el estado del store desde el e2e. (§6.1; ADR 0004)
   Check: `cd web && pnpm typecheck && pnpm test state && pnpm e2e smoke`
 - [ ] **4.2 Navegación package ↔ die.** Máquina de estados de niveles; tween de cámara; fundido de los hermanos; migas de pan; Escape y Backspace. Tests unitarios de la máquina de estados; un e2e entra al die y vuelve. (R7; §6.2)
   Check: `cd web && pnpm test navigation && pnpm e2e navigation`

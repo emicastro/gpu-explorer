@@ -19,9 +19,10 @@ export default defineConfig({
       },
     },
   ],
-  // Tests run against the production build, the same artifact that gets deployed.
+  // Tests run against the production build in `test` mode: the deployed artifact plus
+  // `window.__gpuviz`.
   webServer: {
-    command: `pnpm build && pnpm preview --port ${port} --strictPort`,
+    command: `pnpm build --mode test && pnpm preview --port ${port} --strictPort`,
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,
   },
