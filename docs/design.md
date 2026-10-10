@@ -108,6 +108,12 @@ Fórmulas del brief §7.1, sin cambios.
 - Ancho de banda: HBM.
 - Cota inferior = `max(FLOPs / pico, bytes / BW)`.
 - Los bytes de un kernel fusionado son la entrada y salida del kernel, no la suma de sus ops: esa diferencia es el "ahorro por fusión" que muestra la UI (brief D7).
+  - La regla sale del flujo de tensores entre ops ([ADR 0012](adr/0012-fused-kernel-bytes-from-op-dataflow.md)). Cada op declara qué lee y qué escribe. Un kernel lee lo que sus ops leen y él mismo no escribió. Escribe lo que otro kernel lee y lo que sobrevive al paso: el KV cache y los tokens muestreados.
+  - Por ejemplo, el kernel residual + RMSNorm lee 2 tensores `[M, h]` y el peso de la norma, y escribe 2: la salida normalizada y el residual nuevo, que la suma residual siguiente vuelve a leer.
+  - Con split-KV, FA3 escribe parciales fp32 (salida y LSE por split) y `combine` los lee. Eso hace que el "ahorro" de `combine` sea negativo. `roofline` recibe los splits efectivos por request, que calcula la tarea 3.3. El formato exacto de los parciales queda `simplified` hasta esa tarea.
+  - No se cuentan los tensores de índices y metadatos (ids de token, slot mappings, block tables) ni la tabla cos/sin de RoPE.
+- Los kernels se ejecutan en serie. La cota del paso es la suma de las cotas de sus kernels, y el techo de throughput es `M / cota`.
+- Con las activaciones contadas, las GEMMs de decode cruzan el ridge en `M* = r·NK / (NK − r·(N+K))`, con `r` el ridge. Para las formas de Qwen3-8B eso da entre 322 y 345, no exactamente 295. El 295 sale de contar solo los pesos.
 
 ### 4.3 Tiling y ondas (R3)
 

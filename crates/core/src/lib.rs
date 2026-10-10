@@ -9,6 +9,7 @@ pub mod hardware;
 pub mod model;
 pub mod ops;
 pub mod quantity;
+pub mod roofline;
 pub mod scenario;
 pub mod units;
 
