@@ -2,3 +2,6 @@
 
 # Session bridge between Claude sessions; local only.
 /docs/session.md
+
+# Claude Code local state and agent worktrees.
+/.claude/
