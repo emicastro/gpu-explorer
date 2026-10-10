@@ -94,7 +94,7 @@ pub fn evaluate(hw: &str, model: &str, scenario: &Scenario) -> Result<StepPlan, 
   - **FP8 por bloques: 15 por capa.** Un kernel de cuantización antes de cada GEMM, en las dos ramas: `scale_1x128_kernel` + `fp8_gemm_kernel_swapAB` con M < 32, `per_token_group_quant_8bit_kernel` + `sm90_fp8_gemm_1d2d_impl` con M ≥ 32. `documented`: la cuantización y el `torch.cond` están dentro del custom op `dynamic_flashinfer_deepgemm_blockscale_gemm`, opaco para Inductor, así que no se puede fusionar con la RMSNorm.
   - **FP8 por tensor: 12 por capa.** La cuantización por token es PyTorch nativo bajo Inductor, que la fusiona con la RMSNorm previa (QKV, gate+up) y con SiLU·mul (down). Solo la de la GEMM O queda sola, porque la salida de FA3 es opaca. `simplified`: inferido del comportamiento de Inductor, sin traza.
   - **W8A16: 11 por capa,** con Marlin en lugar de cuBLAS (`simplified`: vLLM lo usa en H100 solo si se fuerza).
-  - El `combine` corre solo si FA3 ve `splits > 1` del lado del host. En decode con CUDA graphs ve siempre el tope de 32, así que corre siempre. En prefill, fuera de CUDA graphs, depende de la heurística.
+  - El `combine` corre solo si FA3 ve `splits > 1` del lado del host (§4.3). Con hasta 512 tokens en el paso (el CUDA graph más grande que captura vLLM en H100), vLLM le pasa el tope de 32, así que corre siempre, también en un prefill chico. Por encima, depende de la heurística de FA3.
   - El `splitKreduce` de cuBLAS que se vio en Ampere no se modela en H100 (no hay fuente; `simplified`).
 - Fuera del loop:
   - preparación de inputs: 7 kernels en decode y 12 en prefill (`estimated`; los de la traza de D14, cuya cantidad depende de cómo cambió el batch);
@@ -110,24 +110,31 @@ Fórmulas del brief §7.1, sin cambios.
 - Los bytes de un kernel fusionado son la entrada y salida del kernel, no la suma de sus ops: esa diferencia es el "ahorro por fusión" que muestra la UI (brief D7).
   - La regla sale del flujo de tensores entre ops ([ADR 0012](adr/0012-fused-kernel-bytes-from-op-dataflow.md)). Cada op declara qué lee y qué escribe. Un kernel lee lo que sus ops leen y él mismo no escribió. Escribe lo que otro kernel lee y lo que sobrevive al paso: el KV cache y los tokens muestreados.
   - Por ejemplo, el kernel residual + RMSNorm lee 2 tensores `[M, h]` y el peso de la norma, y escribe 2: la salida normalizada y el residual nuevo, que la suma residual siguiente vuelve a leer.
-  - Con split-KV, FA3 escribe parciales fp32 (salida y LSE por split) y `combine` los lee. Eso hace que el "ahorro" de `combine` sea negativo. `roofline` recibe los splits efectivos por request, que calcula la tarea 3.3. El formato exacto de los parciales queda `simplified` hasta esa tarea.
+  - Con split-KV, FA3 escribe parciales fp32 (salida y LSE por split y cabeza Q) y `combine` los lee. Eso hace que el "ahorro" de `combine` sea negativo. `roofline` recibe los splits de cada request (§4.3). Un request con 1 split no tiene parciales: FA3 escribe su salida directo y `combine` lo saltea. Es `documented` (FA3 `9cd61de`). La LSE final (4 B por cabeza Q y token) no se cuenta.
   - No se cuentan los tensores de índices y metadatos (ids de token, slot mappings, block tables) ni la tabla cos/sin de RoPE.
 - Los kernels se ejecutan en serie. La cota del paso es la suma de las cotas de sus kernels, y el techo de throughput es `M / cota`.
 - Con las activaciones contadas, las GEMMs de decode cruzan el ridge en `M* = r·NK / (NK − r·(N+K))`, con `r` el ridge. Para las formas de Qwen3-8B eso da entre 322 y 345, no exactamente 295. El 295 sale de contar solo los pesos.
 
 ### 4.3 Tiling y ondas (R3)
 
-Un módulo por `impl`, todos con la misma firma: `fn launch(shape, scenario, hw) -> Launch { blocks, tile, splits, per_wave, smem, regs, persistent, confidence }`.
+Un módulo por `impl` bajo `tiling/`. Cada uno devuelve un `Launch { blocks, tile, splits, slots, per_wave, persistent, provenance }`. `slots` son las CTAs residentes a la vez: el grid persistente, o SMs × CTAs por SM ([ADR 0013](adr/0013-launch-carries-resident-slots.md)).
 
 | `impl` | Fuente | Confianza |
 |---|---|---|
-| `fa3` | brief §7.2: kernel de preparación en decode con CUDA graphs (tope de 32); `num_splits_heuristic` fuera de CUDA graphs; tile 64×128 con un warpgroup y PackGQA en decode | `documented` |
+| `fa3` | brief §7.2, con FA3 `9cd61de` y vLLM v0.31.0 (abajo) | `documented` |
 | `flashinfer_swapab` | `get_best_gemm_config` (FlashInfer 0.7.0.post1), M < 32 | `documented` |
 | `deepgemm_sm90` | heurística de `sm90.hpp` (DeepGEMM `e1f418c`), M ≥ 32, reimplementada con su modelo de ciclos L1/L2 | `documented` |
 | `cutlass_fp8_tensor` | tabla de `scaled_mm_sm90_fp8_dispatch.cuh` | `documented` |
 | `cublas_bf16` | tiles representativos de Hopper (los de CUTLASS BF16 equivalentes) | `simplified` |
-| `marlin_w8a16`, `inductor_elementwise`, `vllm_cache_write`, `fp8_act_quant`, `fa3_prepare`, `vllm_prepare_inputs`, `torch_index`, `sampling` | grid del código fuente o de la traza de D14 | `simplified` |
+| `fa3_combine`, `fa3_prepare` | grid del código fuente de FA3 `9cd61de` | `documented` |
+| `marlin_w8a16`, `inductor_elementwise`, `vllm_cache_write`, `fp8_act_quant`, `vllm_prepare_inputs`, `torch_index`, `sampling` | grid del código fuente o de la traza de D14 | `simplified` |
 
+- **FA3** (`tiling::fa3`) decide los splits en tres capas:
+  1. vLLM pasa un tope: 32 si el paso tiene ≤ 512 tokens (en cualquier fase), 0 si no.
+  2. El host de FA3 fija `num_splits`: el tope, o con 0 `num_splits_heuristic` para un solo request con los largos máximos (varlen solo conoce los máximos). Con más de 992 requests, 1. Si es > 1, corre `combine`.
+  3. El kernel de preparación da a cada request `clamp(⌈n_i / ⌈1.1 · Σ m_j·n_j · n_kv / SMs⌉⌉, 1, num_splits)`, con `m` tiles de Q (GQA empaquetado) y `n` bloques de KV. En decode `m = 1`: es la fórmula del brief §7.2.
+  - Tiles (siempre causal; PackGQA siempre, porque `d == dv`): 64×128 si `T · n_q/n_kv ≤ 64`, si no 128×128. Con KV en FP8: 64×96 y 128×192.
+  - Bloques = `Σ_i m · n_kv · splits_i`, sobre un grid persistente de una CTA por SM.
 - Kernels persistentes (FA3 varlen, DeepGEMM, FlashInfer): grid de 132 CTAs. Las "ondas" son las rondas de tiles que reparte el scheduler: `ondas = ⌈tiles / 132⌉`.
 - `per_wave[i]` = tiles activos en la ronda `i`. El 3D asigna tiles a SMs en orden de índice de SM. El scheduler real no es determinista, así que esa asignación es `simplified`.
 

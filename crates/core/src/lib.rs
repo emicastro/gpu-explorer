@@ -11,6 +11,7 @@ pub mod ops;
 pub mod quantity;
 pub mod roofline;
 pub mod scenario;
+pub mod tiling;
 pub mod units;
 
 /// Version of this crate, as declared in `Cargo.toml`.

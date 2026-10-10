@@ -25,7 +25,7 @@ use crate::units::{Bytes, Flops, Intensity, Seconds};
 
 const SOURCE_FORMULAS: &str = "brief §7.1: roofline formulas (GEMM 2·M·N·K; attention 4·B·T·n_q·d·S_ef; elementwise = read + write)";
 const SOURCE_ELEMENTWISE: &str = "design §4.2: FLOPs per element of norms, RoPE, SiLU·mul and quantization are approximate counts";
-const SOURCE_PARTIALS: &str = "FA3 split-KV: fp32 partial output and LSE per split, written by the main kernel and read by combine (layout pending task 3.3)";
+const SOURCE_PARTIALS: &str = "vllm-project/flash-attention 9cd61de: hopper/flash_api.cpp allocates out_accum fp32 [splits, heads, total_q, d] and softmax_lse_accum fp32 [splits, heads, total_q]; hopper/epilogue_fwd.hpp writes them only for a request with more than one dynamic split, and O directly otherwise; hopper/flash_fwd_combine_kernel.h returns early for a request with one split. The final LSE (4 B per query head and token) is not counted";
 const SOURCE_SAMPLING: &str =
     "sampling: one read of the logits; the sampler's internal passes are not modeled";
 
@@ -180,17 +180,26 @@ impl StepRoofline {
 
 /// The roofline of every kernel in `step`.
 ///
-/// `kv_splits` is how many splits FA3's scheduler gives each request (task
-/// 3.3), not the cap the host sees. With more than one, and when the step
-/// has a `combine` kernel, the partials cross from FA3 to `combine`.
+/// `kv_splits` holds, per request, the splits FA3's prepare kernel gives it
+/// (`tiling::fa3`), not the cap the host sees. When the step has a
+/// `combine` kernel, a request with more than one sends fp32 partials from
+/// FA3 to `combine`; a request with one has FA3 write its output directly.
 pub fn roofline(
     step: &FusedStep,
     model: &ModelConfig,
     scenario: &Scenario,
     hw: &HwNode,
-    kv_splits: u32,
+    kv_splits: &[u32],
 ) -> Result<StepRoofline, CoreError> {
+    if kv_splits.len() as u64 != scenario.batch() {
+        return Err(CoreError::InvalidScenario(format!(
+            "{} split counts for {} requests",
+            kv_splits.len(),
+            scenario.batch()
+        )));
+    }
     let cx = Cx::new(model, scenario);
+    let (split_kv, split_prov) = cx.split_kv(kv_splits);
     let ops: HashMap<OpId, &Op> = step.ops.iter().map(|op| (op.id, op)).collect();
     let op = |id: &OpId| {
         ops.get(id).copied().ok_or_else(|| {
@@ -228,9 +237,8 @@ pub fn roofline(
             if k.imp == Impl::Fa3Combine {
                 // The op is counted in the FA3 kernel; this one only merges
                 // the partials.
-                let (c, p) = cx.combine(kv_splits);
-                cost = cost + c;
-                prov = prov.join(&p);
+                cost = cost + cx.combine(&split_kv);
+                prov = prov.join(&split_prov).join(&cx.elementwise());
                 continue;
             }
             unfused = unfused + flow.standalone();
@@ -241,13 +249,13 @@ pub fn roofline(
                     cost.read.record(a.class, a.bytes);
                 }
             }
-            let split = combined.contains(id) && kv_splits > 1;
+            let split = combined.contains(id);
             for a in &flow.writes {
                 written.insert(a.tensor);
                 if split && matches!(a.tensor, Tensor::Out(_, Part::Whole)) {
-                    let (partials, p) = cx.partials(kv_splits);
-                    cost.write.record(Class::Activations, partials);
-                    prov = prov.join(&p);
+                    cost.write.record(Class::Activations, split_kv.partials);
+                    cost.write.record(a.class, split_kv.direct);
+                    prov = prov.join(&split_prov);
                     continue;
                 }
                 let read_elsewhere = readers
@@ -723,33 +731,56 @@ impl<'a> Cx<'a> {
         Bytes((m * k) as f64 + scales(scale, m, k) as f64 * FP32)
     }
 
-    /// FA3's fp32 partial output and log-sum-exp, per split and query head.
-    fn partials(&self, splits: u32) -> (Bytes, Provenance) {
+    /// Where the attention output goes when FA3 runs with `combine`, given
+    /// each request's splits.
+    fn split_kv(&self, kv_splits: &[u32]) -> (SplitKv, Provenance) {
         let c = &self.model.config;
-        let rows = u64::from(splits) * self.scenario.tokens() * c.num_attention_heads;
+        let rows = u64::from(self.scenario.new_tokens) * c.num_attention_heads;
+        let mut s = SplitKv::default();
+        for &n in kv_splits {
+            let out = rows * c.head_dim;
+            if n > 1 {
+                let n = u64::from(n);
+                // An fp32 output row and its LSE per split and query head.
+                s.partials = s.partials + Bytes((n * rows * (c.head_dim + 1)) as f64 * FP32);
+                s.merged = s.merged + Bytes(out as f64 * BF16);
+                s.merged_elements += n * out;
+            } else {
+                s.direct = s.direct + Bytes(out as f64 * BF16);
+            }
+        }
         (
-            Bytes((rows * (c.head_dim + 1)) as f64 * FP32),
-            Provenance::new(Confidence::Simplified, [SOURCE_PARTIALS]),
+            s,
+            Provenance::new(Confidence::Documented, [SOURCE_PARTIALS]),
         )
     }
 
-    /// FA3's `combine`: reads the partials and writes the attention output.
-    /// With one split per request it has nothing to merge.
-    fn combine(&self, splits: u32) -> (Cost, Provenance) {
-        let (partials, prov) = self.partials(splits);
-        if splits <= 1 {
-            return (Cost::default(), prov);
-        }
-        let c = &self.model.config;
-        let out = self.scenario.tokens() * c.num_attention_heads * c.head_dim;
+    /// FA3's `combine`: reads the partials and writes the output of the
+    /// requests that have them. With none it has nothing to merge.
+    fn combine(&self, s: &SplitKv) -> Cost {
         let mut cost = Cost::default();
-        cost.read.record(Class::Activations, partials);
-        cost.write
-            .record(Class::Activations, Bytes(out as f64 * BF16));
+        if s.merged_elements == 0 {
+            return cost;
+        }
+        cost.read.record(Class::Activations, s.partials);
+        cost.write.record(Class::Activations, s.merged);
         // Rescale and add each split's output.
-        cost.flops = Flops(3.0 * f64::from(splits) * out as f64);
-        (cost, prov.join(&self.elementwise()))
+        cost.flops = Flops(3.0 * s.merged_elements as f64);
+        cost
     }
+}
+
+/// FA3's output under split-KV.
+#[derive(Debug, Default)]
+struct SplitKv {
+    /// fp32 partials of the requests with more than one split.
+    partials: Bytes,
+    /// Output of those requests, which `combine` writes.
+    merged: Bytes,
+    /// Output of the requests with one split, which FA3 writes itself.
+    direct: Bytes,
+    /// Σ splits · output elements over the merged requests.
+    merged_elements: u64,
 }
 
 /// How many scales a `[rows, cols]` tensor carries.
@@ -792,7 +823,8 @@ mod tests {
             .expect("valid profile")
             .fuse(&m, &scenario, host_splits)
             .expect("fuses");
-        let roofline = roofline(&step, &m, &scenario, &hw, kv_splits).expect("roofline");
+        let splits = vec![kv_splits; scenario.contexts.len()];
+        let roofline = roofline(&step, &m, &scenario, &hw, &splits).expect("roofline");
         Run {
             model: m,
             scenario,
@@ -1048,6 +1080,44 @@ mod tests {
         let (_, fa3_one) = one.kernel(0, OpKind::Attention);
         assert_eq!(fa3.cost.flops, fa3_one.cost.flops);
         assert_eq!(fa3.cost.read, fa3_one.cost.read);
+    }
+
+    #[test]
+    fn roofline_request_with_one_split_skips_combine() {
+        // FA3's schedule for 64 + 2 KV blocks: ⌈66 · 1.1 · 8 / 132⌉ = 5 per
+        // SM, so 13 splits for the long request and 1 for the short one.
+        let s = Scenario {
+            contexts: vec![8192, 256],
+            ..decode(1, 8192, Weights::Bf16)
+        };
+        let m = model("qwen3-8b").expect("valid preset");
+        let hw = hardware("h100-sxm").expect("valid preset");
+        let f = crate::tiling::fa3::fa3(&m, &s, &hw).expect("schedules");
+        assert_eq!(f.splits, vec![13, 1]);
+        let step = fusion_profile("vllm-0.31.0-h100")
+            .expect("valid profile")
+            .fuse(&m, &s, f.host_splits)
+            .expect("fuses");
+        let roof = roofline(&step, &m, &s, &hw, &f.splits).expect("roofline");
+        let kernel = |imp| {
+            let i = step
+                .kernels
+                .iter()
+                .position(|k| k.imp == imp)
+                .expect("kernel runs");
+            &roof.kernels[i]
+        };
+        let partials = Bytes(13.0 * 32.0 * 129.0 * FP32);
+        let row = Bytes(32.0 * 128.0 * BF16);
+        assert_eq!(kernel(Impl::Fa3).cost.write.total(), partials + row);
+        let combine = kernel(Impl::Fa3Combine);
+        assert_eq!(combine.cost.read.total(), partials);
+        assert_eq!(combine.cost.write.total(), row);
+        assert!(combine.provenance.sources().any(|s| s == SOURCE_PARTIALS));
+
+        let err =
+            roofline(&step, &m, &s, &hw, &[13]).expect_err("one split count for two requests");
+        assert!(matches!(err, CoreError::InvalidScenario(_)), "{err:?}");
     }
 
     #[test]

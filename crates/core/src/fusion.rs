@@ -232,9 +232,8 @@ impl FusionProfile {
     /// The kernels vLLM launches for one step of `scenario`.
     ///
     /// `attention_splits` is the split count FA3's host code sees, which
-    /// decides whether the `combine` kernel runs: in decode under CUDA
-    /// graphs, vLLM's cap of 32; otherwise FA3's own heuristic (design
-    /// §4.3).
+    /// decides whether the `combine` kernel runs: `Fa3Schedule::host_splits`
+    /// (`tiling::fa3`; design §4.3).
     pub fn fuse(
         &self,
         model: &ModelConfig,
