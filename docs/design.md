@@ -124,10 +124,11 @@ Un módulo por `impl` bajo `tiling/`. Cada uno devuelve un `Launch { blocks, til
 | `fa3` | brief §7.2, con FA3 `9cd61de` y vLLM v0.31.0 (abajo) | `documented` |
 | `flashinfer_swapab` | `get_best_gemm_config` (FlashInfer 0.7.0.post1), M < 32 | `documented` |
 | `deepgemm_sm90` | heurística de `sm90.hpp` (DeepGEMM `e1f418c`), M ≥ 32, reimplementada con su modelo de ciclos L1/L2 | `documented` |
-| `cutlass_fp8_tensor` | tabla de `scaled_mm_sm90_fp8_dispatch.cuh` | `documented` |
-| `cublas_bf16` | tiles representativos de Hopper (los de CUTLASS BF16 equivalentes) | `simplified` |
+| `cutlass_fp8_tensor` | tabla de `scaled_mm_sm90_fp8_dispatch.cuh` (vLLM v0.31.0) y scheduler persistente de CUTLASS v4.7.1 | `documented` |
+| `cublas_bf16` | la misma tabla con BK a la mitad (mismos bytes por etapa) | `simplified` |
+| `inductor_elementwise` | traza de D14: una CTA de 512 hilos por token en las reducciones sobre `h`, una de 128 por 4 filas de cabeza en QK-norm + RoPE, una de 256 por 512 elementos en SiLU·mul | `simplified` |
 | `fa3_combine`, `fa3_prepare` | grid del código fuente de FA3 `9cd61de` | `documented` |
-| `marlin_w8a16`, `inductor_elementwise`, `vllm_cache_write`, `fp8_act_quant`, `vllm_prepare_inputs`, `torch_index`, `sampling` | grid del código fuente o de la traza de D14 | `simplified` |
+| `marlin_w8a16`, `vllm_cache_write`, `fp8_act_quant`, `vllm_prepare_inputs`, `torch_index`, `sampling` | grid del código fuente o de la traza de D14 | `simplified` |
 
 - **FA3** (`tiling::fa3`) decide los splits en tres capas:
   1. vLLM pasa un tope: 32 si el paso tiene ≤ 512 tokens (en cualquier fase), 0 si no.
@@ -135,6 +136,12 @@ Un módulo por `impl` bajo `tiling/`. Cada uno devuelve un `Launch { blocks, til
   3. El kernel de preparación da a cada request `clamp(⌈n_i / ⌈1.1 · Σ m_j·n_j · n_kv / SMs⌉⌉, 1, num_splits)`, con `m` tiles de Q (GQA empaquetado) y `n` bloques de KV. En decode `m = 1`: es la fórmula del brief §7.2.
   - Tiles (siempre causal; PackGQA siempre, porque `d == dv`): 64×128 si `T · n_q/n_kv ≤ 64`, si no 128×128. Con KV en FP8: 64×96 y 128×192.
   - Bloques = `Σ_i m · n_kv · splits_i`, sobre un grid persistente de una CTA por SM.
+- **GEMMs** (`tiling::{flashinfer, deepgemm, cutlass}`):
+  - FlashInfer (swap AB): BM = 64 si N ≤ 64, si no 128, sobre las filas del peso; BN ∈ {16, 24, …, 128} sobre los tokens. Gana el que da menos ondas; a igualdad, el de última onda más llena, y después el BN más chico.
+  - DeepGEMM: candidatos de bloque y cluster, filtros de registros, unroll del kernel 1D2D y etapas de pipeline. Gana el de menos ciclos según su modelo de tráfico L1/L2 dividido por la eficiencia de onda, con la aritmética entera y `float` del C++.
+  - CUTLASS: la tabla por rango de M (swap AB hasta M = 64). Los tiles se redondean a clusters enteros. Con clusters de más de una CTA, el grid es `get_max_cta_occupancy`: 132 con clusters de 2, 116 con clusters de 4.
+  - No se modela split-K.
+- Kernels no persistentes: `slots = SMs × CTAs por SM`, el mínimo de los límites de hilos, bloques, registros y shared memory del SM (`tiling::Sm`, ADR 0013).
 - Kernels persistentes (FA3 varlen, DeepGEMM, FlashInfer): grid de 132 CTAs. Las "ondas" son las rondas de tiles que reparte el scheduler: `ondas = ⌈tiles / 132⌉`.
 - `per_wave[i]` = tiles activos en la ronda `i`. El 3D asigna tiles a SMs en orden de índice de SM. El scheduler real no es determinista, así que esa asignación es `simplified`.
 
@@ -295,4 +302,5 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 - **Agrupación de kernels en H100 sin traza propia** (brief D14 y §12): la fusión de la cuantización por token en el camino FP8 por tensor y la saturación de HBM con 32 CTAs quedan `simplified` / `estimated` hasta tener una corrida en H100. La cuantización del camino FP8 por bloques ya no es una incógnita: el código fuente la deja en un kernel aparte (§4.1).
 - **El tiling de cuBLAS BF16 es una aproximación** (`simplified`). Es el camino BF16, el que más se va a mirar; la UI tiene que decirlo con claridad.
+- **Relleno de CUDA graphs.** En decode, vLLM rellena el batch hasta el tamaño capturado más cercano (`[1, 2, 4] + 8..248 de a 8 + 256..512 de a 16`). Las GEMMs ven ese M y no el real, y el corte de M = 32 entre FlashInfer y DeepGEMM se aplica sobre él: un batch de 25 a 31 se rellena a 32 y va por DeepGEMM. Hoy el núcleo usa el M real; lo modela la tarea 3.5b.
 - **El 3D es el riesgo principal de esfuerzo** (brief §2). Por eso el grupo 4 llega a un hito visible con datos reales temprano, en paralelo con el núcleo.
