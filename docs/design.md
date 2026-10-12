@@ -236,8 +236,9 @@ Sigue cómo vLLM v0.31.0 dimensiona el KV cache al arrancar (`gpu_worker.py`, `d
 ### 6.3 Geometría (R8, R19)
 
 - Toda la geometría es procedural: cajas y planos parametrizados, generados desde el árbol de hardware por funciones puras `layout<Level>(node) -> Placement[]`. Así se testean las cantidades sin renderizar.
+- Código en `web/src/scene/`: `layout.ts` (funciones puras), `palette.ts` (único lugar con colores) y `Parts.tsx` (dibuja). Los conteos salen del árbol (`count`, `enabled`); las posiciones son `simplified`. Los deshabilitados se atenúan por color, no se ocultan. La escena monta el package hasta que la cámara aterriza y entonces el die; `initCore()` y `hardware()` se llaman en `main.tsx`.
 - Package: el die al centro, 6 sitios de HBM alrededor (2 columnas de 3), uno inactivo atenuado, sobre el interposer.
-- Die: 8 GPCs en dos filas de 4, la L2 en dos mitades al centro, 10 controladores en los bordes junto a las HBM activas, el GigaThread engine.
+- Die: 8 GPCs en dos filas de 4, la L2 en dos mitades al centro, 12 controladores en los bordes (2 por sitio de HBM; los 2 del sitio inactivo atenuados, 10 activos), el GigaThread engine.
 - GPC: TPCs con 2 SMs cada uno; los SMs deshabilitados se ven grises.
 - SM: 4 sub-particiones, shared memory / L1, TMA.
 - Sub-partición: warp scheduler, register file, tensor core, CUDA cores.

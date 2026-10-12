@@ -13,7 +13,7 @@ export const TRANSITION_SECONDS = 0.6;
 
 const POSES: readonly Pose[] = [
   { position: [3, 3, 3], target: [0, 0, 0] },
-  { position: [0.9, 1.4, 1.4], target: [0, 0.3, 0] },
+  { position: [0, 3.4, 3.4], target: [0, 0, 0] },
   { position: [0.5, 0.9, 0.9], target: [0, 0.3, 0] },
   { position: [0.3, 0.6, 0.6], target: [0, 0.3, 0] },
   { position: [0.2, 0.4, 0.4], target: [0, 0.3, 0] },

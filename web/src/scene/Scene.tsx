@@ -1,6 +1,6 @@
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import type { Group, Material, Vector3 } from 'three';
 import {
   ease,
@@ -12,7 +12,9 @@ import {
   type Pose,
 } from '../nav/camera.ts';
 import { useStore } from '../state/store.ts';
-import { PLACEHOLDER_BOXES } from './placeholder.ts';
+import type { HwNode } from '../core/index.ts';
+import { layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
+import { Parts } from './Parts.tsx';
 
 /** The part of drei's OrbitControls the rig drives. */
 interface Orbit {
@@ -31,13 +33,15 @@ interface Flight {
 }
 
 /**
- * The placeholder level (task 4.3 replaces the boxes). Flies the camera and
- * fades the siblings when the path changes (design §6.2).
+ * The current level's parts. Flies the camera and fades the siblings when the
+ * path changes (design §6.2).
  * A new flight starts from wherever the camera is, so interrupting one is smooth.
  */
-function Placeholder() {
+function Level({ hardware }: { hardware: HwNode }) {
   const siblings = useRef<Group>(null);
   const enter = useStore((s) => s.enter);
+  const path = useStore((s) => s.path);
+  const flying = useStore((s) => s.from !== null);
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as Orbit | null;
   const fade = useRef(1);
@@ -85,42 +89,34 @@ function Placeholder() {
       });
     }
   });
+  // The package stays until the flight lands; the die mounts on arrival (design §6.2).
+  const packageParts = useMemo(() => layoutPackage(nodeAtLevel(hardware, 'package')), [hardware]);
+  const dieParts = useMemo(() => layoutDie(nodeAtLevel(hardware, 'die')), [hardware]);
+  const showPackage = path.length === 0 || flying;
+  const showDie = path.length >= 1 && !flying;
   return (
     <>
-      <group ref={siblings}>
-        {PLACEHOLDER_BOXES.filter((b) => b.sibling).map((b) => (
-          <mesh key={b.key} position={[...b.position]}>
-            <boxGeometry args={[...b.size]} />
-            <meshStandardMaterial color={b.color} transparent />
-          </mesh>
-        ))}
-      </group>
-      {PLACEHOLDER_BOXES.filter((b) => !b.sibling).map((b) => (
-        <mesh
-          key={b.key}
-          position={[...b.position]}
-          onClick={(e) => {
-            if (!b.id) return;
-            e.stopPropagation();
-            enter(b.id);
-          }}
-        >
-          <boxGeometry args={[...b.size]} />
-          <meshStandardMaterial color={b.color} />
-        </mesh>
-      ))}
+      {showPackage && (
+        <>
+          <group ref={siblings}>
+            <Parts placements={packageParts.filter((p) => p.enterId === null)} onEnter={enter} />
+          </group>
+          <Parts placements={packageParts.filter((p) => p.enterId !== null)} onEnter={enter} />
+        </>
+      )}
+      {showDie && <Parts placements={dieParts} onEnter={enter} />}
     </>
   );
 }
 
-export function Scene() {
+export function Scene({ hardware }: { hardware: HwNode }) {
   const start = poseForDepth(0);
   return (
     <Canvas camera={{ position: [...start.position], fov: 50 }}>
       <color attach="background" args={[SCENE_BACKGROUND]} />
       <ambientLight intensity={0.4} />
       <directionalLight position={[5, 8, 3]} intensity={1.2} />
-      <Placeholder />
+      <Level hardware={hardware} />
       <OrbitControls makeDefault />
     </Canvas>
   );
