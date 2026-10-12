@@ -1,4 +1,5 @@
 import { create, type StateCreator } from 'zustand';
+import { INITIAL_NAV, navReduce, type NavEvent } from '../nav/machine.ts';
 import type { Scenario } from '../generated/Scenario.ts';
 import type {
   Evaluate,
@@ -80,12 +81,20 @@ const playbackSlice: Slice<PlaybackSlice> = (set) => ({
   setPlaying: (playing) => { set({ playing }); },
 });
 
-const navigationSlice: Slice<NavigationSlice> = (set, get) => ({
-  path: [],
-  enter: (id) => { set({ path: [...get().path, id] }); },
-  back: () => { set({ path: get().path.slice(0, -1) }); },
-  setPath: (path) => { set({ path }); },
-});
+const navigationSlice: Slice<NavigationSlice> = (set, get) => {
+  const send = (event: NavEvent) => {
+    const { path, from } = get();
+    const next = navReduce({ path, from }, event);
+    if (next.path !== path || next.from !== from) set(next);
+  };
+  return {
+    ...INITIAL_NAV,
+    enter: (id) => { send({ type: 'enter', id }); },
+    back: () => { send({ type: 'back' }); },
+    setPath: (path) => { send({ type: 'goto', path }); },
+    settle: () => { send({ type: 'settle' }); },
+  };
+};
 
 export const useStore = create<StoreState>()((...a) => ({
   ...scenarioSlice(...a),

@@ -225,7 +225,8 @@ Sigue cómo vLLM v0.31.0 dimensiona el KV cache al arrancar (`gpu_worker.py`, `d
 
 ### 6.2 Navegación (R7)
 
-- Máquina de estados de niveles. El camino es una lista de ids del árbol de hardware.
+- Máquina de estados de niveles (`web/src/nav/machine.ts`, pura). El camino es una lista de ids del árbol de hardware **debajo del package**: `[]` es el package, `['die']` el die. `from` guarda el camino de origen mientras la cámara vuela (`null` en reposo); la escena llama `settle` al terminar. Navegar a mitad de un vuelo parte desde donde está la cámara. Tope de 4 niveles bajo el package.
+- Hasta 4.3 la escena es un placeholder (cajas); el click en el die entra, y los hermanos (interposer, HBM) se desvanecen.
 - Cada nivel es un sub-árbol de escena con **coordenadas locales y escala normalizada** (brief §4.2). Al entrar a un hijo:
   1. la cámara vuela hacia él (tween de posición y target, ~600 ms);
   2. los hermanos se desvanecen;

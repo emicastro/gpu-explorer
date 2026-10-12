@@ -1,4 +1,5 @@
 // Store shape (design §6.1, ADR 0004).
+import type { NavState } from '../nav/machine.ts';
 import type { KvDtype } from '../generated/KvDtype.ts';
 import type { Phase } from '../generated/Phase.ts';
 import type { StepPlan } from '../generated/StepPlan.ts';
@@ -57,13 +58,15 @@ export interface PlaybackSlice {
   setPlaying: (playing: boolean) => void;
 }
 
-export interface NavigationSlice {
-  /** Hardware-tree node ids from the root to the current level. */
-  path: string[];
+export interface NavigationSlice extends NavState {
+  /** Goes down into the child `id`. Ignored on the path already or at the deepest level. */
   enter: (id: string) => void;
-  /** Goes up one level; a no-op at the root. */
+  /** Goes up one level; a no-op at the package. */
   back: () => void;
+  /** Jumps to a prefix of the path (a breadcrumb click). */
   setPath: (path: string[]) => void;
+  /** The scene calls this when the camera flight ends. */
+  settle: () => void;
 }
 
 export type StoreState = ScenarioSlice &

@@ -6,3 +6,44 @@ body,
   height: 100%;
   background: #0b0d12;
 }
+
+.breadcrumbs {
+  position: fixed;
+  top: 12px;
+  left: 16px;
+  font: 14px system-ui, sans-serif;
+  color: #c9d1e0;
+}
+
+.breadcrumbs ol {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breadcrumbs li + li::before {
+  content: '›';
+  margin-right: 4px;
+  color: #6b7488;
+}
+
+.breadcrumbs button {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.breadcrumbs button:hover:not(:disabled) {
+  background: #1d2230;
+}
+
+.breadcrumbs button:disabled {
+  color: #fff;
+  cursor: default;
+}
