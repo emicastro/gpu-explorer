@@ -56,7 +56,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cd web && pnpm test layout && pnpm build`
 - [x] **4.4 Hito: un kernel animado con datos reales.** Con el plan de `evaluate` (decode BF16, batch 1, 8k), animar un kernel (la GEMM QKV) recorriendo HBM → L2 → SM → tensor core, con partículas en escala logarítmica y el número exacto de bytes. El e2e lee la etiqueta de bytes y la compara con el plan. (R11; §6.6)
 
-- [ ] **4.5 Pasada visual: metal y detalle.** El estilo de [ADR 0017](adr/0017-metallic-materials-and-detail-density.md) se aplica al package y al die, tomando como referencia el video `h9Z4oGN89MU`. Lo que manda, en orden: materiales metálicos, densidad de detalle y fluidez.
+- [x] **4.5 Pasada visual: metal y detalle.** El estilo de [ADR 0017](adr/0017-metallic-materials-and-detail-density.md) se aplica al package y al die, tomando como referencia el video `h9Z4oGN89MU`. Lo que manda, en orden: materiales metálicos, densidad de detalle y fluidez.
   - `materials.ts` arma los materiales: sustrato, silicio, metal, contactos y bloques de función con el color de `palette.ts`. Cada grupo que se desvanece tiene su propio juego, así que el fundido de 4.2 sigue andando.
   - Environment generado en código una sola vez, con `<Lightformer>` y sin presets ni archivos. Bordes biselados con una geometría compartida.
   - Detalle contable con la cantidad del árbol: los SMs de cada GPC en el die, con los deshabilitados atenuados. Detalle de superficie con texturas generadas en runtime: pistas del sustrato, micro-bumps del interposer y grano de lógica. El detalle no recibe raycast.

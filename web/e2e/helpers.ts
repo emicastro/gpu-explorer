@@ -1,8 +1,11 @@
 import type { Page } from '@playwright/test';
+import type { RenderInfo } from '../src/scene/renderInfo.ts';
 import type { StoreState } from '../src/state/types.ts';
 
 // This project has no DOM lib (tsconfig.node.json), so `window` is reached through globalThis.
-type Hooked = { __gpuviz?: { getState: () => unknown; setState: (p: unknown) => void } };
+type Hooked = {
+  __gpuviz?: { getState: () => unknown; setState: (p: unknown) => void; renderInfo: () => unknown };
+};
 
 /** Reads the store through `window.__gpuviz` (present only in `--mode test` builds). */
 export async function getStoreState(page: Page): Promise<Partial<StoreState>> {
@@ -33,4 +36,15 @@ export async function waitForStore(
     state = await getStoreState(page);
   }
   return state;
+}
+
+/** The last frame's draw calls and triangles, through `window.__gpuviz.renderInfo()`. */
+export async function getRenderInfo(page: Page): Promise<RenderInfo> {
+  const info = await page.evaluate(() => {
+    const hook = (globalThis as unknown as Hooked).__gpuviz;
+    if (!hook) throw new Error('window.__gpuviz is missing: not a test build');
+    return hook.renderInfo() as RenderInfo | null;
+  });
+  if (!info) throw new Error('the canvas has not rendered yet');
+  return info;
 }

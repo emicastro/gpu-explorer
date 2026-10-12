@@ -2,20 +2,31 @@
 // here and nowhere else.
 
 /** What a part of the chip does; the color follows it. */
-export type PartKind =
-  | 'interposer'
-  | 'die'
-  | 'hbm'
-  | 'gpc'
-  | 'l2'
-  | 'memory-controller'
-  | 'gigathread';
+export const PART_KINDS = [
+  'substrate',
+  'stiffener',
+  'interposer',
+  'bumps',
+  'die',
+  'hbm',
+  'gpc',
+  'sm',
+  'l2',
+  'memory-controller',
+  'gigathread',
+] as const;
+
+export type PartKind = (typeof PART_KINDS)[number];
 
 export const PART_COLORS: Record<PartKind, string> = {
+  substrate: '#1d2a26',
+  stiffener: '#b9bec7',
   interposer: '#3a4256',
+  bumps: '#c9a24e',
   die: '#5a6478',
   hbm: '#e0a03c',
-  gpc: '#4c8bf5',
+  gpc: '#2c4f8f',
+  sm: '#4c8bf5',
   l2: '#9b6bdf',
   'memory-controller': '#3fb58a',
   gigathread: '#e0607a',
@@ -31,6 +42,14 @@ export const FLOW_COLORS: Record<TrafficClass, string> = {
 };
 
 export const SCENE_BACKGROUND = '#0b0d12';
+
+/** The studio the environment map is rendered from (ADR 0017), and the key light. */
+export const LIGHT_COLORS = {
+  softbox: '#ffffff',
+  cool: '#9cc2ff',
+  warm: '#ffd9a8',
+  key: '#fff4e6',
+} as const;
 
 const channels = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const BACKGROUND = channels(SCENE_BACKGROUND);

@@ -247,6 +247,8 @@ Sigue cómo vLLM v0.31.0 dimensiona el KV cache al arrancar (`gpu_worker.py`, `d
 - Estilo ([ADR 0017](adr/0017-metallic-materials-and-detail-density.md)), con la referencia visual del brief (el video `h9Z4oGN89MU`) y siempre por debajo del presupuesto de §6.7:
   - Materiales metálicos PBR. `materials.ts` es el único lugar que los arma, y `palette.ts` sigue siendo el único con colores. Cada grupo que se desvanece tiene su propio juego de materiales.
   - Un environment map generado en código una sola vez, bordes biselados y nada de post-proceso.
+  - Los biseles salen de una geometría compartida por tamaño (`geometry.ts`): una caja unitaria escalada a una placa plana deforma el bisel. Las UV se proyectan en las unidades de cada pieza, así una textura tiene la misma densidad en todas.
+  - Los bloques de función van lisos, para que el color se lea de un vistazo. El grano de lógica va en el silicio que los rodea, como fondo.
   - Regla del detalle: lo que se repite y parece contable es geometría, con la cantidad del árbol. Lo que no tiene cantidad en el árbol va como textura de superficie generada en runtime, sin archivos de imagen.
   - El detalle no recibe raycast.
 

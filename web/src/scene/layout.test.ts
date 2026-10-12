@@ -39,6 +39,15 @@ describe('layoutPackage', () => {
     expect(hbm.filter((p) => p.position[0] > 0)).toHaveLength(3);
   });
 
+  it('sits each chip on a micro-bump pad, and the frame on the substrate', () => {
+    const ps = layoutPackage(pkg);
+    expect(ofKind(ps, 'bumps')).toHaveLength(7);
+    expect(ofKind(ps, 'bumps').filter((p) => !p.enabled)).toHaveLength(1);
+    expect(ofKind(ps, 'stiffener')).toHaveLength(4);
+    expect(ofKind(ps, 'substrate')).toHaveLength(1);
+    expect(new Set(ps.map((p) => p.key)).size).toBe(ps.length);
+  });
+
   it('only the die can be entered', () => {
     const entering = layoutPackage(pkg).filter((p) => p.enterId !== null);
     expect(entering.map((p) => p.enterId)).toEqual(['die']);
@@ -53,6 +62,34 @@ describe('layoutDie', () => {
     expect(gpcs).toHaveLength(8);
     expect(new Set(gpcs.map((p) => p.position[2])).size).toBe(2);
     expect(new Set(gpcs.map((p) => p.nodeId))).toEqual(new Set(['gpc-8tpc', 'gpc-9tpc']));
+  });
+
+  it('draws 144 SMs, 18 on each GPC, with 132 enabled: the tree\'s counts', () => {
+    const sms = ofKind(ps(), 'sm');
+    expect(sms).toHaveLength(144);
+    expect(sms.filter((p) => p.enabled)).toHaveLength(132);
+    for (const gpc of ofKind(ps(), 'gpc')) {
+      const [gx, , gz] = gpc.position;
+      const [gw, , gd] = gpc.size;
+      const on = sms.filter((s) => Math.abs(s.position[0] - gx) < gw / 2 && Math.abs(s.position[2] - gz) < gd / 2);
+      expect(on).toHaveLength(18);
+      // The 8-TPC variant has one TPC (two SMs) fused off.
+      expect(on.filter((s) => !s.enabled)).toHaveLength(gpc.nodeId === 'gpc-8tpc' ? 2 : 0);
+    }
+    expect(new Set(ps().map((p) => p.key)).size).toBe(ps().length);
+  });
+
+  it('keeps the SMs inside their GPC and on top of it', () => {
+    const gpcs = ofKind(ps(), 'gpc');
+    for (const s of ofKind(ps(), 'sm')) {
+      const g = gpcs.find((g) => Math.abs(s.position[0] - g.position[0]) < g.size[0] / 2
+        && Math.abs(s.position[2] - g.position[2]) < g.size[2] / 2);
+      if (!g) throw new Error(`${s.key} is on no GPC`);
+      for (const axis of [0, 2] as const) {
+        expect(Math.abs(s.position[axis] - g.position[axis]) + s.size[axis] / 2).toBeLessThan(g.size[axis] / 2);
+      }
+      expect(s.position[1] - s.size[1] / 2).toBeCloseTo(g.position[1] + g.size[1] / 2);
+    }
   });
 
   it('has 2 halves of L2 at the center and the GigaThread engine between them', () => {
@@ -93,9 +130,9 @@ describe('layoutDie', () => {
 });
 
 describe('instancing and palette', () => {
-  it('instances only what repeats more than 8 times: the controllers, not the GPCs', () => {
+  it('instances only what repeats more than 8 times: the SMs and controllers, not the GPCs', () => {
     const groups = groupParts(layoutDie(die));
-    expect(groups.instanced.map((g) => g[0]?.kind)).toEqual(['memory-controller']);
+    expect(groups.instanced.map((g) => g[0]?.kind)).toEqual(['sm', 'memory-controller']);
     expect(groups.single.filter((p) => p.kind === 'gpc')).toHaveLength(8);
   });
 
@@ -108,9 +145,13 @@ describe('instancing and palette', () => {
 });
 
 describe('R19 review checklist', () => {
-  it('the repo has no 3D models or images of third parties', () => {
-    // Geometry is boxes from layout.ts; nothing is loaded from a file.
-    const src = readFileSync(new URL('./layout.ts', import.meta.url), 'utf8');
-    expect(src).not.toMatch(/\.(glb|gltf|obj|fbx|png|jpe?g|svg)\b/i);
+  it('the repo has no 3D models, images or HDRIs of third parties', () => {
+    // Geometry is boxes from layout.ts and geometry.ts, textures are generated in
+    // textures.ts, and the environment is built in Scene.tsx: nothing is loaded from a file.
+    for (const file of ['layout.ts', 'geometry.ts', 'textures.ts', 'materials.ts', 'Scene.tsx', 'Parts.tsx']) {
+      const src = readFileSync(new URL(`./${file}`, import.meta.url), 'utf8');
+      expect(src, file).not.toMatch(/\.(glb|gltf|obj|fbx|png|jpe?g|svg|webp|ktx2|hdr|exr)\b/i);
+      expect(src, file).not.toMatch(/\b(preset|files)=|useLoader|TextureLoader/);
+    }
   });
 });

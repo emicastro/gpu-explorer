@@ -1,7 +1,7 @@
-import { OrbitControls } from '@react-three/drei';
+import { Environment, Lightformer, OrbitControls, PerformanceMonitor } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
-import type { Group, Material, Vector3 } from 'three';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Group, Vector3 } from 'three';
 import {
   ease,
   lerp,
@@ -15,9 +15,11 @@ import { useStore } from '../state/store.ts';
 import type { HwNode } from '../core/index.ts';
 import { FLOW_OP, findKernel } from '../flow/flow.ts';
 import { Flow } from './Flow.tsx';
-import { layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
-import { SCENE_BACKGROUND } from './palette.ts';
+import { DIE_FRAME, layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
+import { createMaterials, type MaterialSet } from './materials.ts';
+import { LIGHT_COLORS, SCENE_BACKGROUND } from './palette.ts';
 import { Parts } from './Parts.tsx';
+import { useRenderInfoProbe } from './renderInfo.ts';
 
 /** The part of drei's OrbitControls the rig drives. */
 interface Orbit {
@@ -31,6 +33,13 @@ interface Flight {
   toPose: Pose;
   fromFade: number;
   toFade: number;
+}
+
+/** A material set for the life of the component, disposed on unmount. */
+function useMaterials(fades: boolean): MaterialSet {
+  const set = useMemo(() => createMaterials({ fades }), [fades]);
+  useEffect(() => () => { set.dispose(); }, [set]);
+  return set;
 }
 
 /**
@@ -49,6 +58,9 @@ function Level({ hardware }: { hardware: HwNode }) {
   const fade = useRef(1);
   const flight = useRef<Flight | null>(null);
   const lastPath = useRef<string[]>(useStore.getState().path);
+  // The package's siblings fade, so they own their materials (ADR 0017).
+  const fadingMaterials = useMaterials(true);
+  const solidMaterials = useMaterials(false);
 
   useFrame((_, delta) => {
     const { path, settle } = useStore.getState();
@@ -83,13 +95,8 @@ function Level({ hardware }: { hardware: HwNode }) {
     }
 
     const group = siblings.current;
-    if (group) {
-      group.visible = fade.current > 0.001;
-      group.traverse((o) => {
-        const material = (o as { material?: Material }).material;
-        if (material) material.opacity = fade.current;
-      });
-    }
+    if (group) group.visible = fade.current > 0.001;
+    fadingMaterials.setOpacity(fade.current);
   });
   // The package stays until the flight lands; the die mounts on arrival (design §6.2).
   const packageParts = useMemo(() => layoutPackage(nodeAtLevel(hardware, 'package')), [hardware]);
@@ -102,26 +109,73 @@ function Level({ hardware }: { hardware: HwNode }) {
       {showPackage && (
         <>
           <group ref={siblings}>
-            <Parts placements={packageParts.filter((p) => p.enterId === null)} onEnter={enter} />
+            <Parts
+              placements={packageParts.filter((p) => p.enterId === null)}
+              materials={fadingMaterials}
+              onEnter={enter}
+            />
           </group>
-          <Parts placements={packageParts.filter((p) => p.enterId !== null)} onEnter={enter} />
+          <Parts
+            placements={packageParts.filter((p) => p.enterId !== null)}
+            materials={solidMaterials}
+            onEnter={enter}
+          />
         </>
       )}
-      {showDie && <Parts placements={dieParts} onEnter={enter} />}
-      {showDie && flowKernel && <Flow kernel={flowKernel} dieParts={dieParts} />}
+      {showDie && (
+        <group position={[...DIE_FRAME.position]} scale={DIE_FRAME.scale}>
+          <Parts placements={dieParts} materials={solidMaterials} onEnter={enter} />
+          {flowKernel && <Flow kernel={flowKernel} dieParts={dieParts} />}
+        </group>
+      )}
     </>
   );
 }
 
+/**
+ * The reflections metal needs: a studio of light panels rendered into an
+ * environment map once (`frames={1}`), from code. No preset, no file (R19).
+ */
+function Studio() {
+  return (
+    <Environment frames={1} resolution={256}>
+      <Lightformer form="rect" color={LIGHT_COLORS.softbox} intensity={0.5} position={[0, 6, 0]} scale={[24, 24, 1]} target={[0, 0, 0]} />
+      {[-5, -1.5, 2].map((x) => (
+        <Lightformer key={x} form="rect" color={LIGHT_COLORS.softbox} intensity={3} position={[x, 5.5, -x]} scale={[1.2, 18, 1]} target={[0, 0, 0]} />
+      ))}
+      <Lightformer form="rect" color={LIGHT_COLORS.cool} intensity={1.6} position={[-6, 1.5, 2]} scale={[1, 8, 1]} target={[0, 0, 0]} />
+      <Lightformer form="rect" color={LIGHT_COLORS.warm} intensity={1.2} position={[6, 1, -2]} scale={[1, 8, 1]} target={[0, 0, 0]} />
+      <Lightformer form="ring" color={LIGHT_COLORS.softbox} intensity={1.5} position={[2, 3, 6]} scale={2.5} target={[0, 0, 0]} />
+    </Environment>
+  );
+}
+
+function RenderInfoProbe() {
+  useRenderInfoProbe();
+  return null;
+}
+
+/** Pixel ratio ceiling (design §6.7); it drops toward 1 when the frame rate falls. */
+const MAX_DPR = 2;
+
 export function Scene({ hardware }: { hardware: HwNode }) {
   const start = poseForDepth(0);
+  const top = Math.min(MAX_DPR, window.devicePixelRatio);
+  const [dpr, setDpr] = useState(top);
   return (
-    <Canvas camera={{ position: [...start.position], fov: 50 }}>
+    <Canvas camera={{ position: [...start.position], fov: 50 }} dpr={dpr}>
+      <PerformanceMonitor
+        onIncline={() => { setDpr(top); }}
+        onDecline={() => { setDpr(1); }}
+        flipflops={3}
+        onFallback={() => { setDpr(1); }}
+      />
       <color attach="background" args={[SCENE_BACKGROUND]} />
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[5, 8, 3]} intensity={1.2} />
+      <Studio />
+      <directionalLight position={[5, 8, 3]} intensity={1.4} color={LIGHT_COLORS.key} />
       <Level hardware={hardware} />
       <OrbitControls makeDefault />
+      <RenderInfoProbe />
     </Canvas>
   );
 }

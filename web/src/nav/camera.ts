@@ -12,8 +12,9 @@ export interface Pose {
 export const TRANSITION_SECONDS = 0.6;
 
 const POSES: readonly Pose[] = [
-  { position: [3, 3, 3], target: [0, 0, 0] },
-  { position: [0, 3.4, 3.4], target: [0, 0, 0] },
+  { position: [3.6, 3.6, 3.6], target: [0, 0, 0] },
+  // The die level sits on the package's die (layout.ts `DIE_FRAME`: scale 2/7, top at 0.25).
+  { position: [0, 1.22, 0.97], target: [0, 0.25, 0] },
   { position: [0.5, 0.9, 0.9], target: [0, 0.3, 0] },
   { position: [0.3, 0.6, 0.6], target: [0, 0.3, 0] },
   { position: [0.2, 0.4, 0.4], target: [0, 0.3, 0] },

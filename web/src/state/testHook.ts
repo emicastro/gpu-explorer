@@ -1,3 +1,4 @@
+import { readRenderInfo, type RenderInfo } from '../scene/renderInfo.ts';
 import { useStore } from './store.ts';
 import type { StoreState } from './types.ts';
 
@@ -6,6 +7,8 @@ export interface GpuvizHook {
   /** A plain-data copy of the store (functions dropped, so it crosses the Playwright boundary). */
   getState: () => Partial<StoreState>;
   setState: (patch: Partial<StoreState>) => void;
+  /** Draw calls, triangles and pixel ratio of the last frame; null before the canvas mounts. */
+  renderInfo: () => RenderInfo | null;
 }
 
 declare global {
@@ -22,5 +25,6 @@ export function installTestHook(): void {
         Object.entries(useStore.getState()).filter(([, v]) => typeof v !== 'function'),
       ),
     setState: (patch) => { useStore.setState(patch); },
+    renderInfo: readRenderInfo,
   };
 }

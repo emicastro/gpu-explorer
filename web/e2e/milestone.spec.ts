@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { getStoreState, waitForStore } from './helpers.ts';
+import { getRenderInfo, getStoreState, waitForStore } from './helpers.ts';
 
 test('the QKV GEMM flows over the die with the exact HBM bytes of the plan', async ({ page }) => {
   const errors: string[] = [];
@@ -41,4 +41,35 @@ test('the QKV GEMM flows over the die with the exact HBM bytes of the plan', asy
   await expect(label).toHaveCount(0);
 
   expect(errors).toEqual([]);
+});
+
+/** Frame budget (design §6.7, ADR 0017). */
+const MAX_DRAW_CALLS = 200;
+const MAX_TRIANGLES = 500_000;
+
+test('the package and the die stay within the frame budget, and the die still enters', async ({ page }) => {
+  await page.goto('/');
+  const canvas = page.locator('canvas');
+  await expect(canvas).toBeVisible();
+  await page.waitForTimeout(500);
+
+  const atPackage = await getRenderInfo(page);
+  expect(atPackage.calls).toBeGreaterThan(0);
+  expect(atPackage.calls).toBeLessThanOrEqual(MAX_DRAW_CALLS);
+  expect(atPackage.triangles).toBeLessThanOrEqual(MAX_TRIANGLES);
+  expect(atPackage.pixelRatio).toBeLessThanOrEqual(2);
+
+  // The click still reaches the die through the new geometry and the detail around it.
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('canvas has no bounding box');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const state = await waitForStore(page, (s) => s.path?.length === 1 && s.from === null);
+  expect(state.path).toEqual(['die']);
+  await page.waitForTimeout(200);
+
+  const atDie = await getRenderInfo(page);
+  expect(atDie.calls).toBeGreaterThan(0);
+  expect(atDie.calls).toBeLessThanOrEqual(MAX_DRAW_CALLS);
+  expect(atDie.triangles).toBeLessThanOrEqual(MAX_TRIANGLES);
+  console.log(`budget: package ${JSON.stringify(atPackage)}, die ${JSON.stringify(atDie)}`);
 });
