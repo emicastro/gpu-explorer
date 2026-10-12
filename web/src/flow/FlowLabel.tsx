@@ -2,6 +2,7 @@ import type { Quantity } from '../core/index.ts';
 import { FLOW_COLORS, type TrafficClass } from '../scene/palette.ts';
 import { useStore } from '../state/store.ts';
 import { FLOW_OP, FLOW_STAGES, findKernel, flowStreams, formatBytes, formatBytesShort } from './flow.ts';
+import { stopIsActive, useFlowStage } from './stage.ts';
 
 const CLASS_LABELS: Record<TrafficClass, string> = {
   weights: 'Weights',
@@ -24,6 +25,7 @@ function Bytes({ q, testId }: { q: Quantity; testId?: string }) {
 export function FlowLabel() {
   const plan = useStore((s) => s.plan);
   const atDie = useStore((s) => s.path.length >= 1 && s.from === null);
+  const leg = useFlowStage((s) => s.leg);
   const kernel = plan && atDie ? findKernel(plan, FLOW_OP) : null;
   if (!kernel) return null;
   return (
@@ -31,7 +33,15 @@ export function FlowLabel() {
       <p className="flow-kernel">
         <code>{kernel.name}</code> · QKV projection · layer {String(kernel.layer)}
       </p>
-      <p className="flow-path">{FLOW_STAGES.join(' → ')}</p>
+      {/* The ends of the leg the pulse is on are lit (ADR 0018). */}
+      <p className="flow-path" data-testid="flow-path" data-leg={leg === null ? '' : String(leg)}>
+        {FLOW_STAGES.map((stop, i) => (
+          <span key={stop}>
+            {i > 0 && ' → '}
+            <span className={stopIsActive(leg, i) ? 'flow-stop-active' : undefined}>{stop}</span>
+          </span>
+        ))}
+      </p>
       <p>
         Read from HBM: <Bytes q={kernel.bytes.hbmRead} testId="flow-bytes" />
       </p>

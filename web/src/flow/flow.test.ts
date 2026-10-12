@@ -7,6 +7,7 @@ import {
   arrivalScale,
   findKernel,
   flowParticles,
+  flowPaths,
   flowRoutes,
   flowStreams,
   formatBytes,
@@ -18,7 +19,10 @@ import {
   particleCount,
   pointAt,
   streamWidth,
+  WAVE_SPREAD,
+  waveLeg,
 } from './flow.ts';
+import { stopIsActive } from './stage.ts';
 
 let plan: StepPlan;
 let qkv: KernelPlan;
@@ -104,15 +108,30 @@ describe('routes', () => {
     }
   });
 
-  it('ends on top of a GPC, dropping into it from above', () => {
+  it('ends on an enabled SM, dropping onto it from a hub above its GPC', () => {
     const gpcs = dieParts.filter((p) => p.kind === 'gpc');
+    const sms = dieParts.filter((p) => p.kind === 'sm');
+    const landed = new Set<string>();
     for (const route of flowRoutes(dieParts)) {
-      const [, , sm, core] = route;
-      const gpc = gpcs.find((g) => g.position[0] === core[0] && g.position[2] === core[2]);
-      expect(gpc).toBeDefined();
-      expect(core[1]).toBeCloseTo((gpc?.position[1] ?? 0) + (gpc?.size[1] ?? 0) / 2);
-      expect(sm[1]).toBeGreaterThan(core[1]);
+      const [, , hub, end] = route;
+      const sm = sms.find((p) => p.position[0] === end[0] && p.position[2] === end[2]);
+      if (!sm) throw new Error('a route ends off every SM');
+      expect(sm.enabled).toBe(true);
+      expect(end[1]).toBeCloseTo(sm.position[1] + sm.size[1] / 2);
+      const gpc = gpcs.find((g) => g.position[0] === hub[0] && g.position[2] === hub[2]);
+      if (!gpc) throw new Error('a hub is above no GPC');
+      expect(Math.abs(end[0] - gpc.position[0])).toBeLessThan(gpc.size[0] / 2);
+      expect(Math.abs(end[2] - gpc.position[2])).toBeLessThan(gpc.size[2] / 2);
+      expect(hub[1]).toBeGreaterThan(end[1]);
+      landed.add(sm.key);
     }
+    // Spread over each GPC's SMs, not all on one tile.
+    expect(landed.size).toBeGreaterThan(gpcs.length * 3);
+  });
+
+  it('draws 26 shared legs: 10 controllers to their L2 half, 2 halves to 8 GPCs', () => {
+    const paths = flowPaths(flowRoutes(dieParts));
+    expect(paths).toHaveLength(10 + 2 * 8);
   });
 
   it('spends a third of the loop on each leg and hits every stop', () => {
@@ -134,13 +153,13 @@ describe('routes', () => {
 });
 
 describe('particles', () => {
-  it('gives every stream its count, on valid routes, spread evenly in time', () => {
+  it('gives every stream its count, on valid routes, all within one pulse', () => {
     const streams = flowStreams(qkv);
     const routes = flowRoutes(dieParts).length;
     const particles = flowParticles(streams, routes);
     expect(particles).toHaveLength(streams.reduce((n, s) => n + s.count, 0));
     expect(particles.every((p) => Number.isInteger(p.route) && p.route >= 0 && p.route < routes)).toBe(true);
-    expect(particles.every((p) => p.phase >= 0 && p.phase < 1)).toBe(true);
+    expect(particles.every((p) => p.phase >= 0 && p.phase < WAVE_SPREAD)).toBe(true);
     // Spread over the routes, not piled on a few.
     expect(new Set(particles.map((p) => p.route)).size).toBeGreaterThan(routes / 2);
     expect(flowParticles(streams, routes)).toEqual(particles);
@@ -152,6 +171,22 @@ describe('particles', () => {
       const width = streams.find((s) => s.cls === p.cls)?.width ?? 0;
       expect(p.offset.every((c) => Math.abs(c) <= width / 2)).toBe(true);
     }
+  });
+});
+
+describe('waves', () => {
+  it('puts the pulse on one leg at a time, in order, and loops', () => {
+    // Sampled from the pulse's center, one full loop.
+    const legs = Array.from({ length: 30 }, (_, i) => waveLeg(i / 30 - WAVE_SPREAD / 2));
+    // Each leg shows up as one run, in order: 0, 1, 2.
+    const runs = legs.filter((l, i) => i === 0 || l !== legs[i - 1]);
+    expect(runs).toEqual([0, 1, 2]);
+    expect(waveLeg(1.5)).toBe(waveLeg(0.5));
+  });
+
+  it('lights the two ends of the current leg and nothing without a flow', () => {
+    expect([0, 1, 2, 3].map((stop) => stopIsActive(1, stop))).toEqual([false, true, true, false]);
+    expect(stopIsActive(null, 0)).toBe(false);
   });
 });
 

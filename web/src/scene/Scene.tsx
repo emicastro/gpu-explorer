@@ -15,6 +15,7 @@ import { useStore } from '../state/store.ts';
 import type { HwNode } from '../core/index.ts';
 import { FLOW_OP, findKernel } from '../flow/flow.ts';
 import { Flow } from './Flow.tsx';
+import { Labels } from './Labels.tsx';
 import { DIE_FRAME, layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
 import { createMaterials, type MaterialSet } from './materials.ts';
 import { LIGHT_COLORS, SCENE_BACKGROUND } from './palette.ts';
@@ -128,6 +129,9 @@ function Level({ hardware }: { hardware: HwNode }) {
           {flowKernel && <Flow kernel={flowKernel} dieParts={dieParts} />}
         </group>
       )}
+      {/* Labels stay mounted and toggle: their DOM overlay outlives the levels' meshes. */}
+      <Labels placements={packageParts} show={path.length === 0 && !flying} />
+      <Labels placements={dieParts} own="die" show={showDie} frame={DIE_FRAME} />
     </>
   );
 }

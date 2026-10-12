@@ -71,7 +71,42 @@ body,
 }
 
 .flow-path {
+  color: #6b7488;
+}
+
+.flow-stop-active {
   color: #fff;
+  font-weight: 600;
+}
+
+.scene-labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.scene-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(11 13 18 / 72%);
+  font: 12px system-ui, sans-serif;
+  color: #c9d1e0;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.scene-label[hidden] {
+  display: none;
+}
+
+.scene-label-active {
+  background: rgb(143 184 255 / 85%);
+  color: #0b0d12;
 }
 
 .flow-exact {

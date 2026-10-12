@@ -41,6 +41,9 @@ export const FLOW_COLORS: Record<TrafficClass, string> = {
   activations: '#7fe3ff',
 };
 
+/** The drawn legs of the flow (ADR 0018). */
+export const FLOW_PATH_COLOR = '#8fb8ff';
+
 export const SCENE_BACKGROUND = '#0b0d12';
 
 /** The studio the environment map is rendered from (ADR 0017), and the key light. */

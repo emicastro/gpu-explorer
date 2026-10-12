@@ -73,3 +73,41 @@ test('the package and the die stay within the frame budget, and the die still en
   expect(atDie.triangles).toBeLessThanOrEqual(MAX_TRIANGLES);
   console.log(`budget: package ${JSON.stringify(atPackage)}, die ${JSON.stringify(atDie)}`);
 });
+
+test('labels name the parts, and the flow lights one leg at a time', async ({ page }) => {
+  await page.goto('/');
+  const canvas = page.locator('canvas');
+  await expect(canvas).toBeVisible();
+  await page.waitForTimeout(500);
+
+  // Both levels' labels stay mounted; only the current level's are visible.
+  const label = (kind: string) => page.getByTestId(`label-${kind}`).filter({ visible: true });
+  await expect(label('hbm')).toHaveText('HBM3 ×5 (+1 off)');
+  await expect(label('die')).toContainText('click to enter');
+
+  // The die's label sits over the canvas; the click still enters the die.
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('canvas has no bounding box');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await waitForStore(page, (s) => s.path?.length === 1 && s.from === null);
+
+  await expect(label('sm')).toHaveText('SM ×132 (+12 off)');
+  await expect(label('memory-controller')).toContainText('×10 (+2 off)');
+  await expect(label('hbm')).toHaveCount(0);
+
+  // The leg moves on: within one loop, the label shows more than one leg.
+  const path = page.getByTestId('flow-path');
+  const seen = new Set<string>();
+  for (let i = 0; i < 12 && seen.size < 2; i++) {
+    seen.add((await path.getAttribute('data-leg')) ?? '');
+    await page.waitForTimeout(400);
+  }
+  seen.delete('');
+  expect(seen.size).toBeGreaterThanOrEqual(2);
+  // Exactly the two ends of the current leg are lit.
+  await expect(path.locator('.flow-stop-active')).toHaveCount(2);
+
+  const info = await getRenderInfo(page);
+  expect(info.calls).toBeLessThanOrEqual(MAX_DRAW_CALLS);
+  expect(info.triangles).toBeLessThanOrEqual(MAX_TRIANGLES);
+});

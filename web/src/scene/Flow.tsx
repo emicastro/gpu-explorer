@@ -1,29 +1,52 @@
 import { useFrame } from '@react-three/fiber';
-import { useLayoutEffect, useMemo, useRef } from 'react';
-import { Color, Object3D, type InstancedMesh } from 'three';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { BufferGeometry, Color, Float32BufferAttribute, Object3D, type InstancedMesh } from 'three';
 import type { KernelPlan } from '../core/index.ts';
-import { arrivalScale, flowParticles, flowRoutes, flowStreams, pointAt } from '../flow/flow.ts';
+import {
+  arrivalScale,
+  flowParticles,
+  flowPaths,
+  flowRoutes,
+  flowStreams,
+  pointAt,
+  waveLeg,
+} from '../flow/flow.ts';
+import { useFlowStage } from '../flow/stage.ts';
 import type { Placement } from './layout.ts';
-import { FLOW_COLORS } from './palette.ts';
+import { FLOW_COLORS, FLOW_PATH_COLOR } from './palette.ts';
 
-/** Seconds from the HBM to a tensor core. */
-const LOOP_SECONDS = 3;
-const PARTICLE_SIZE = 0.04;
+/** Seconds for one pulse from the HBM to a tensor core. */
+const LOOP_SECONDS = 4.5;
+const PARTICLE_SIZE = 0.045;
+const PATH_OPACITY = 0.35;
 
 interface FlowProps {
   kernel: KernelPlan;
   dieParts: Placement[];
 }
 
-/** The kernel's HBM reads as particles over the die, in one draw call (design §6.6). */
+/**
+ * The kernel's HBM reads over the die (design §6.6, ADR 0018): the shared legs
+ * as faint lines, and the particles in pulses along them, one leg at a time.
+ * Two draw calls.
+ */
 export function Flow({ kernel, dieParts }: FlowProps) {
   const mesh = useRef<InstancedMesh>(null);
   const clock = useRef(0);
+  const setLeg = useFlowStage((s) => s.setLeg);
   const routes = useMemo(() => flowRoutes(dieParts), [dieParts]);
   const particles = useMemo(
     () => flowParticles(flowStreams(kernel), routes.length),
     [kernel, routes],
   );
+  const paths = useMemo(() => {
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(flowPaths(routes).flat(2), 3));
+    return g;
+  }, [routes]);
+  useEffect(() => () => { paths.dispose(); }, [paths]);
+  // The flow leaves with the die: no leg is current once it unmounts.
+  useEffect(() => () => { setLeg(null); }, [setLeg]);
   const dummy = useMemo(() => new Object3D(), []);
 
   useLayoutEffect(() => {
@@ -39,13 +62,19 @@ export function Flow({ kernel, dieParts }: FlowProps) {
     if (!m) return;
     clock.current += delta;
     const loop = clock.current / LOOP_SECONDS;
+    const leg = waveLeg(loop);
+    if (useFlowStage.getState().leg !== leg) setLeg(leg);
     particles.forEach((p, i) => {
       const route = routes[p.route];
       if (!route) return;
+      // Later phases lead the pulse.
       const s = (loop + p.phase) % 1;
       const [x, y, z] = pointAt(route, s);
-      dummy.position.set(x + p.offset[0], y + p.offset[1], z + p.offset[2]);
-      dummy.scale.setScalar(PARTICLE_SIZE * arrivalScale(s));
+      // The spread closes as the particle lands, so it ends on its SM.
+      const k = arrivalScale(s);
+      dummy.position.set(x + p.offset[0] * k, y + p.offset[1] * k, z + p.offset[2] * k);
+      // Shrinks as it lands, but stays visible on its SM.
+      dummy.scale.setScalar(PARTICLE_SIZE * (0.6 + 0.4 * k));
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
     });
@@ -54,9 +83,19 @@ export function Flow({ kernel, dieParts }: FlowProps) {
 
   // The particles move every frame, so a bounding sphere computed once would cull them.
   return (
-    <instancedMesh ref={mesh} args={[undefined, undefined, particles.length]} frustumCulled={false}>
-      <sphereGeometry args={[0.5, 8, 6]} />
-      <meshBasicMaterial toneMapped={false} />
-    </instancedMesh>
+    <>
+      <lineSegments geometry={paths} raycast={() => undefined}>
+        <lineBasicMaterial color={FLOW_PATH_COLOR} transparent opacity={PATH_OPACITY} toneMapped={false} />
+      </lineSegments>
+      <instancedMesh
+        ref={mesh}
+        args={[undefined, undefined, particles.length]}
+        frustumCulled={false}
+        raycast={() => undefined}
+      >
+        <sphereGeometry args={[0.5, 8, 6]} />
+        <meshBasicMaterial toneMapped={false} />
+      </instancedMesh>
+    </>
   );
 }

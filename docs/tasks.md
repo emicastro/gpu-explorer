@@ -65,6 +65,13 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   - Review: el usuario aprueba capturas de los dos niveles. Checklist de R19: sin HDRIs, imágenes ni modelos de terceros. (R12, R19, R21; §6.3, §6.7)
   Check: `cd web && pnpm test flow && pnpm e2e milestone`
 
+- [x] **4.6 Legibilidad: etiquetas y flujo por etapas.** Se aplica la [ADR 0018](adr/0018-scene-labels-and-staged-flow.md), a pedido del usuario después de revisar las capturas de la 4.5.
+  - `scene/labels.ts` (función pura) y etiquetas fijas por tipo en el package y en el die, con la cantidad del árbol. No toman eventos del puntero.
+  - Flujo: tramos compartidos dibujados en un `lineSegments`, ondas con un solo reloj, llegada a un SM habilitado y el tramo actual resaltado en la etiqueta del DOM y en las del nivel (`flow/stage.ts`).
+  - Tests: las etiquetas del die dicen `SM ×132 (+12 off)` y `×10 (+2 off)` para los controladores, y la del package `×5 (+1 off)` para la HBM; cada ruta termina sobre un SM habilitado; se dibujan 26 tramos; las fases de una onda caben en su desfasaje. Un e2e en el die lee las etiquetas, ve cambiar el tramo resaltado y sigue dentro del presupuesto; el click al die sigue entrando con las etiquetas encima.
+  - Review: el usuario aprueba capturas de los dos niveles. (R8, R11, R17; §6.6, §6.6b)
+  Check: `cd web && pnpm test flow labels && pnpm e2e milestone`
+
 ## 5. 3D: niveles restantes
 
 - [ ] **5.1 GPC, SM y sub-partición.** Layouts y navegación de los tres niveles; SMs deshabilitados en gris; lo físico se distingue de lo lógico (warps como abstracción, brief §4.1). Tests de cantidades; un e2e baja hasta la sub-partición y vuelve con Escape verificando las migas (R7 completo). Los tres niveles usan los materiales y la regla del detalle de 4.5 (ADR 0017). Va después de 4.5. Review: el usuario aprueba capturas de los tres niveles. (R7, R8, R21; §6.2, §6.3)

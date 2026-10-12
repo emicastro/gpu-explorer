@@ -274,10 +274,18 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 - Primer hito (brief §9): dos niveles (package y die) y un kernel animado con datos reales del plan.
 - Código en `web/src/flow/`: `flow.ts` (funciones puras: kernel, streams, rutas, posición sobre la ruta, formato) y `FlowLabel.tsx` (etiqueta en el DOM). `scene/Flow.tsx` dibuja las partículas en un solo `InstancedMesh`.
 - **El flujo corre en el nivel die** (ADR 0016).
-  - Rutas: todos los pares (controlador activo, GPC), por la mitad de L2 del lado del controlador. El último tramo es la caída dentro del GPC.
+  - Rutas: todos los pares (controlador activo, GPC), por la mitad de L2 del lado del controlador. El último tramo baja desde un punto sobre el GPC hasta un SM habilitado ([ADR 0018](adr/0018-scene-labels-and-staged-flow.md)).
+  - Se dibujan los tramos compartidos: controlador → mitad de L2 y mitad de L2 → GPC, en un solo `lineSegments`.
+  - Las partículas viajan en ondas: hay un solo reloj y cada una tiene un desfasaje chico, así que el pulso entero está en un tramo a la vez. La etiqueta del DOM y las etiquetas del nivel resaltan el tramo actual. El tramo vive en un store propio (`flow/stage.ts`), que se escribe solo cuando cambia.
   - La etiqueta muestra `bytes.hbmRead` y su desglose. En la QKV a batch 1, L2 → SM supera a HBM en menos del 1 %: solo el vector de entrada (8 KB) se lee por CTA.
 - Escala: `logLevel` lleva de 1 KB (0) a 1 GB (1) en 6 décadas. Las partículas van de 4 a 240 y el ancho, de 0,03 a 0,16. La QKV a batch 1 da 189 partículas de pesos (50 MB) y 40 de activaciones (8 KB).
 - El escenario por defecto es decode BF16, batch 1, 8k: es el del hito y el de la lección de split-KV (brief §7.2).
+
+### 6.6b Etiquetas de la escena
+
+- Una etiqueta fija por tipo de pieza en cada nivel, en una capa del DOM sobre el canvas, proyectada en cada frame: nombre y cantidad del árbol, por ejemplo `SM ×132 (+12 off)` ([ADR 0018](adr/0018-scene-labels-and-staged-flow.md)).
+- `scene/labels.ts` es una función pura de las placements a las etiquetas. Las etiquetas no toman eventos del puntero y se muestran solo con la cámara quieta en su nivel.
+- Son el ancla de los tooltips de la 8.2. El panel de la 5.2 se abre desde las piezas.
 
 ### 6.7 Rendimiento (R12)
 

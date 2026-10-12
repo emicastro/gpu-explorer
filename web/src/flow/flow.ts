@@ -3,9 +3,9 @@
 //
 // At the die level the HBM has no geometry: the particles leave from the
 // active memory controllers, the HBM's door into the die, cross the L2 half on
-// their side and enter a GPC, where the SMs and their tensor cores live (no
-// geometry for those until task 5.1). Every GPC gets particles; task 5.3
-// narrows them to the SMs the wave occupies.
+// their side and land on an SM, where the tensor cores live (no geometry for
+// those until task 5.1). They travel in pulses, one leg at a time (ADR 0018).
+// Every GPC gets particles; task 5.3 narrows them to the SMs the wave occupies.
 import type { KernelPlan, Quantity, StepPlan } from '../core/index.ts';
 import type { OpKind } from '../generated/OpKind.ts';
 import type { Placement, Vec3 } from '../scene/layout.ts';
@@ -76,24 +76,63 @@ const top = (p: Placement, lift: number): Vec3 => [
   p.position[2],
 ];
 
+/** Height of the hub above each GPC, where a pulse fans out to its SMs. */
+const HUB_LIFT = 0.35;
+const L2_LIFT = 0.12;
+const MC_LIFT = 0.02;
+
+const insideXZ = (p: Placement, box: Placement): boolean =>
+  Math.abs(p.position[0] - box.position[0]) < box.size[0] / 2
+  && Math.abs(p.position[2] - box.position[2]) < box.size[2] / 2;
+
 /**
  * Every (active controller, GPC) pair, through the L2 half on the controller's
  * side: each controller fills its own half, and any SM reads from either half.
- * The last leg drops from above the GPC into it, toward the tensor cores.
+ * From a hub above the GPC the last leg drops onto one of its enabled SMs,
+ * toward the tensor cores (ADR 0018). Controllers take turns over a GPC's SMs,
+ * so the landings spread over the GPC.
  */
 export function flowRoutes(dieParts: Placement[]): Route[] {
   const controllers = dieParts.filter((p) => p.kind === 'memory-controller' && p.enabled);
   const halves = dieParts.filter((p) => p.kind === 'l2');
   const gpcs = dieParts.filter((p) => p.kind === 'gpc');
+  const sms = dieParts.filter((p) => p.kind === 'sm' && p.enabled);
   const routes: Route[] = [];
-  for (const mc of controllers) {
+  controllers.forEach((mc, c) => {
     const half = halves.find((h) => Math.sign(h.position[0]) === Math.sign(mc.position[0]));
     if (!half) throw new Error(`no L2 half on the side of ${mc.key}`);
     for (const gpc of gpcs) {
-      routes.push([top(mc, 0.02), top(half, 0.12), top(gpc, 0.35), top(gpc, 0)]);
+      const own = sms.filter((sm) => insideXZ(sm, gpc));
+      const sm = own[(c * 7) % own.length];
+      if (!sm) throw new Error(`${gpc.key} has no enabled SM`);
+      routes.push([top(mc, MC_LIFT), top(half, L2_LIFT), top(gpc, HUB_LIFT), top(sm, 0)]);
     }
-  }
+  });
   return routes;
+}
+
+/** A straight piece of path, drawn as a line. */
+export type Segment = readonly [Vec3, Vec3];
+
+/**
+ * The legs the routes share, each drawn once: every active controller to its
+ * L2 half, and every L2 half to every GPC's hub. The fan-out onto the SMs is
+ * left undrawn: it is short, and the SMs are the target.
+ */
+export function flowPaths(routes: Route[]): Segment[] {
+  const seen = new Set<string>();
+  const out: Segment[] = [];
+  const add = (a: Vec3, b: Vec3) => {
+    const key = `${a.join(',')}>${b.join(',')}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push([a, b]);
+  };
+  for (const [mc, l2, hub] of routes) {
+    add(mc, l2);
+    add(l2, hub);
+  }
+  return out;
 }
 
 const LEGS = FLOW_STAGES.length - 1;
@@ -113,6 +152,19 @@ export function pointAt(route: Route, s: number): Vec3 {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
+const frac = (x: number): number => x - Math.floor(x);
+
+/**
+ * How much of the loop one pulse spans: every particle's phase falls in
+ * [0, WAVE_SPREAD), so a pulse travels as one cluster (ADR 0018).
+ */
+export const WAVE_SPREAD = 0.1;
+
+/** The leg the pulse is on when the loop is at `loop` (any real; only its fraction counts). */
+export function waveLeg(loop: number): number {
+  return legAt(frac(loop + WAVE_SPREAD / 2));
+}
+
 /** A particle's size at `s`: full until the last leg, then it shrinks into the GPC. */
 export function arrivalScale(s: number): number {
   const leg = legAt(s);
@@ -123,14 +175,13 @@ export function arrivalScale(s: number): number {
 export interface Particle {
   cls: TrafficClass;
   route: number;
-  /** Offset in [0, 1) along the loop, so a stream is spread evenly in time. */
+  /** Offset in [0, WAVE_SPREAD) along the loop: its place within the pulse. */
   phase: number;
   /** Fixed displacement from the route, within the stream's width. */
   offset: Vec3;
 }
 
 // Low-discrepancy sequences: deterministic and evenly spread, no RNG to seed.
-const frac = (x: number): number => x - Math.floor(x);
 const R1 = 0.6180339887;
 const R2 = 0.7548776662;
 const R3 = 0.5698402910;
@@ -145,7 +196,7 @@ export function flowParticles(streams: Stream[], routes: number): Particle[] {
       out.push({
         cls: s.cls,
         route: Math.floor(frac(n * R1) * routes),
-        phase: i / s.count,
+        phase: (i / s.count) * WAVE_SPREAD,
         offset: [
           (frac(n * R2) - 0.5) * s.width,
           (frac(n * R3) - 0.5) * s.width * 0.5,
