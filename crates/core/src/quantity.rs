@@ -42,6 +42,9 @@ pub enum Unit {
     FlopsPerCycle,
     #[serde(rename = "count")]
     Count,
+    /// Dimensionless: the SI unit "1".
+    #[serde(rename = "1")]
+    Ratio,
 }
 
 /// Where a number comes from: its confidence and the sources behind it.
@@ -205,6 +208,7 @@ mod tests {
         assert_eq!(tag(Unit::FlopsPerSec), "FLOP/s");
         assert_eq!(tag(Unit::FlopsPerByte), "FLOP/B");
         assert_eq!(tag(Unit::Count), "count");
+        assert_eq!(tag(Unit::Ratio), "1");
         let none = Provenance::new(Confidence::Estimated, Vec::<String>::new());
         let q = Quantity::new(Count(3), none.clone());
         assert_eq!(

@@ -135,6 +135,11 @@ real_unit!(
     /// Throughput per clock cycle: what one tensor core does each cycle.
     FlopsPerCycle, FlopsPerCycle
 );
+real_unit!(
+    /// A dimensionless ratio, such as the fraction of a peak a kernel
+    /// reaches. It scales a real unit with `*` on its `f64` (ADR 0014).
+    Ratio, Ratio
+);
 
 /// `n` instances of a quantity: 132 SMs × shared memory per SM. Not for
 /// `Intensity`, which is a ratio and does not add up across instances.
@@ -317,6 +322,7 @@ mod tests {
         assert_eq!(Bytes::UNIT, Unit::Bytes);
         assert_eq!(Intensity::UNIT, Unit::FlopsPerByte);
         assert_eq!(Count::UNIT, Unit::Count);
+        assert_eq!(Ratio::UNIT, Unit::Ratio);
         assert_eq!(Count(7).value(), 7.0);
     }
 }

@@ -9,12 +9,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
 use crate::quantity::{Provenance, Quantity};
+use crate::time::Calibration;
 use crate::units::{BytesPerSec, Count, FlopsPerCycle, FlopsPerSec, Hertz, Intensity, Measure};
 
 const H100_SXM: &str = include_str!("../../../data/hardware/h100-sxm.json");
 
-/// The hardware preset with this id, parsed and validated.
+/// The tree of the hardware preset with this id, parsed and validated.
 pub fn hardware(id: &str) -> Result<HwNode, CoreError> {
+    preset(id).map(|p| p.tree)
+}
+
+/// How the software stack runs on the hardware preset with this id: the
+/// parameters of the realistic time (design §4.4).
+pub fn calibration(id: &str) -> Result<Calibration, CoreError> {
+    preset(id).map(|p| p.calibration)
+}
+
+/// A hardware file: the component tree and, beside it, the calibration
+/// (ADR 0014).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Preset {
+    tree: HwNode,
+    calibration: Calibration,
+}
+
+fn preset(id: &str) -> Result<Preset, CoreError> {
     match id {
         "h100-sxm" => parse(id, H100_SXM),
         _ => Err(CoreError::UnknownId {
@@ -24,11 +44,12 @@ pub fn hardware(id: &str) -> Result<HwNode, CoreError> {
     }
 }
 
-fn parse(name: &str, src: &str) -> Result<HwNode, CoreError> {
-    let root: HwNode =
+fn parse(name: &str, src: &str) -> Result<Preset, CoreError> {
+    let preset: Preset =
         serde_json::from_str(src).map_err(|e| CoreError::InvalidData(format!("{name}: {e}")))?;
-    root.validate()?;
-    Ok(root)
+    preset.tree.validate()?;
+    preset.calibration.validate()?;
+    Ok(preset)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -369,8 +390,12 @@ mod tests {
         format!(r#"{{"id": "x", "name": "X", "level": "unit", "contentId": "x"{extra}}}"#)
     }
 
-    fn rejects(src: &str, needle: &str) {
-        match parse("test", src) {
+    /// `tree` with the H100 calibration beside it.
+    fn rejects(tree: &str, needle: &str) {
+        let calibration = serde_json::to_string(&calibration("h100-sxm").expect("valid preset"))
+            .expect("serializes");
+        let src = format!(r#"{{"tree": {tree}, "calibration": {calibration}}}"#);
+        match parse("test", &src) {
             Err(CoreError::InvalidData(msg)) => assert!(msg.contains(needle), "{msg}"),
             other => panic!("expected InvalidData containing {needle:?}, got {other:?}"),
         }

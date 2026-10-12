@@ -60,6 +60,7 @@ tools/profiling/  scripts de perfilado (D14)
   - Valores de partida: brief D1. Lo derivable (pico BF16, ridge point) no se guarda: lo calcula el núcleo y lo verifica un test.
 - **`data/models/qwen3-8b.json`:** el `config.json` de Qwen/Qwen3-8B tal cual, bajo `config`, con una sola `provenance` para todo el archivo ([ADR 0010](adr/0010-model-file-provenance.md)). Lo acompaña un bloque `quantization_variants` con los esquemas FP8, cada uno con su confianza y sus fuentes: `block` (pesos en bloques de 128×128, activación 1×128 dinámica) y `per_tensor` (`--quantization fp8_per_tensor` en vLLM v0.31.0: escala estática por tensor en los pesos, dinámica por token en la activación).
 - **`data/fusion/vllm-0.31.0-h100.json`:** el perfil de fusión (§4.1).
+- El archivo de hardware tiene dos claves: `tree` (el árbol) y `calibration` (los parámetros del tiempo realista, §4.4) ([ADR 0014](adr/0014-hardware-file-wraps-tree-and-calibration.md)).
 - Un test parsea cada archivo con `deny_unknown_fields` y valida invariantes, p. ej. la suma de `enabled` por nivel.
 
 ### 3.3 API del núcleo
@@ -141,32 +142,36 @@ Un módulo por `impl` bajo `tiling/`. Cada uno devuelve un `Launch { blocks, til
   - DeepGEMM: candidatos de bloque y cluster, filtros de registros, unroll del kernel 1D2D y etapas de pipeline. Gana el de menos ciclos según su modelo de tráfico L1/L2 dividido por la eficiencia de onda, con la aritmética entera y `float` del C++.
   - CUTLASS: la tabla por rango de M (swap AB hasta M = 64). Los tiles se redondean a clusters enteros. Con clusters de más de una CTA, el grid es `get_max_cta_occupancy`: 132 con clusters de 2, 116 con clusters de 4.
   - No se modela split-K.
-- Kernels no persistentes: `slots = SMs × CTAs por SM`, el mínimo de los límites de hilos, bloques, registros y shared memory del SM (`tiling::Sm`, ADR 0013).
 - **Resto de los kernels** (`tiling::{fa3_aux, marlin, engine}`; `tiling::launch` despacha por `impl`):
   - `prepare` (FA3): `⌈b / 992⌉` CTAs de `32 · min(⌈b / 31⌉, 32)` hilos (warps redondeados a potencia de 2).
   - `combine` (FA3): tile `kBlockM × kBlockK` = 8×128 (16×64 si `dv ≤ 64`), 256 hilos, `b · ⌈T · h / kBlockM⌉ · ⌈dv / kBlockK⌉` CTAs. Con grids ralos el scheduler lanza `⌈total_q · h / kBlockM⌉ + b` y las sobrantes salen al instante; `blocks` cuenta solo las que trabajan.
   - Marlin: persistente, 132 CTAs; la config `{thread_k, thread_n}` sale de `determine_exec_config` (`simplified`: no se chequea la shared memory, y un M grande se cuenta como un solo lanzamiento).
   - Cache write: una CTA por token. Cuantización FP8: FlashInfer lanza `8 · SMs` CTAs fijas (M < 32); vLLM, una CTA por 32 grupos de 128. `index`: una CTA de 128 hilos por 512 elementos. Sampling: una CTA por request. Inputs: grids de la traza D14 según el kernel y la cantidad de requests.
   - Registros y shared memory de `combine`, `prepare` y los kernels de `engine` no están citados, así que `slots` cuenta solo el límite de hilos (ADR 0013).
+- Kernels no persistentes: `slots = SMs × CTAs por SM`, el mínimo de los límites de hilos, bloques, registros y shared memory del SM (`tiling::Sm`, ADR 0013).
 - Kernels persistentes (FA3 varlen, DeepGEMM, FlashInfer): grid de 132 CTAs. Las "ondas" son las rondas de tiles que reparte el scheduler: `ondas = ⌈tiles / 132⌉`.
 - `per_wave[i]` = tiles activos en la ronda `i`. El 3D asigna tiles a SMs en orden de índice de SM. El scheduler real no es determinista, así que esa asignación es `simplified`.
 
 ### 4.4 Tiempo realista (R4)
 
-Por kernel:
+Por kernel (`time::realistic`):
 
 ```
 bw_ef      = BW · η_m · min(1, sms_activos / sms_para_saturar)
-compute_ef = pico · η_c(forma)
+compute_ef = pico · η_c(FLOPs) · min(1, sms_activos / SMs)
 t_real     = max(FLOPs / compute_ef, bytes / bw_ef) + t_overhead
 ```
 
+- `sms_activos` = `min(blocks, SMs)` del `Launch` (§4.3).
+- `compute_ef` también se reparte por SM: un kernel en 24 SMs no puede usar los tensor cores de los otros 108. La cota inferior (§4.2) no lo hace: es el límite físico del chip entero.
 - `η_m` = 0.93 (STREAM, brief §7.1).
-- `sms_para_saturar`: cuántos SMs hacen falta para saturar HBM. Es un parámetro `estimated`, que responde la pregunta abierta de las 32 CTAs (brief §12).
-- `η_c(forma)` sale de la tabla de rangos del brief §7.1, interpolada por tamaño.
-- `t_overhead` es por kernel: con CUDA graphs en decode, menor que sin ellos en prefill.
-- Todos los parámetros viven en `data/hardware/h100-sxm.json`, en un bloque `calibration`, con confianza `estimated` y fuentes.
+- `sms_para_saturar` = 32: cuántos SMs hacen falta para saturar HBM. Sale de la ley de Little (~2.3 MB en vuelo contra ~64–96 KB por CTA de un kernel con pipeline de TMA). Responde la pregunta abierta de las 32 CTAs (brief §12): alcanzan, más o menos, en los kernels con pipeline.
+- `η_c(FLOPs)` interpola la tabla de rangos del brief §7.1 en log de FLOPs, y se acota en los extremos: 0.40 a 1e10, 0.55 a 1e11 (formas típicas de LLM), 0.75 a 1e12 (GEMMs grandes y cuadradas). La misma curva vale para la atención y los elementwise.
+- `t_overhead` es por kernel: 4 µs si vLLM reproduce el paso desde un CUDA graph (decode con hasta 512 tokens) y 6 µs si no.
+- Todos los parámetros viven en el bloque `calibration` del archivo de hardware, al lado del árbol ([ADR 0014](adr/0014-hardware-file-wraps-tree-and-calibration.md)). Todos son `estimated`, con fuentes. Las eficiencias usan la unidad adimensional `"1"`.
 - Test de calibración: decode 8B BF16, batch 1, contexto de 350 → suma de `t_real` dentro de ±15 % de 7.28 ms (GPUStack), y suma de cotas inferiores menor que 7.28 ms.
+  - Da 6.56 ms (−10 %), contra una cota de 4.54 ms. De la diferencia, ~1.6 ms son `t_overhead` (408 kernels) y ~0.35 ms son `η_m`.
+  - Los ~0.7 ms que faltan son tiempo del host por paso (scheduling, sampling, procesar la salida), que el TPOT medido incluye y el modelo por kernel no. La versión del benchmark (vLLM v0.11.0) tampoco es la del perfil de fusión.
 
 ### 4.5 Memoria (R5)
 
@@ -306,7 +311,7 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 ## 10. Riesgos y pendientes
 
-- **Agrupación de kernels en H100 sin traza propia** (brief D14 y §12): la fusión de la cuantización por token en el camino FP8 por tensor y la saturación de HBM con 32 CTAs quedan `simplified` / `estimated` hasta tener una corrida en H100. La cuantización del camino FP8 por bloques ya no es una incógnita: el código fuente la deja en un kernel aparte (§4.1).
+- **Agrupación de kernels en H100 sin traza propia** (brief D14 y §12): la fusión de la cuantización por token en el camino FP8 por tensor queda `simplified` hasta tener una corrida en H100. La saturación de HBM (`sms_para_saturar` = 32) y el `t_overhead` por kernel quedan `estimated` (§4.4). Una traza de nsys en H100 los reemplazaría por medidas. La cuantización del camino FP8 por bloques ya no es una incógnita: el código fuente la deja en un kernel aparte (§4.1).
 - **El tiling de cuBLAS BF16 es una aproximación** (`simplified`). Es el camino BF16, el que más se va a mirar; la UI tiene que decirlo con claridad.
 - **Relleno de CUDA graphs.** En decode, vLLM rellena el batch hasta el tamaño capturado más cercano (`[1, 2, 4] + 8..248 de a 8 + 256..512 de a 16`). Las GEMMs ven ese M y no el real, y el corte de M = 32 entre FlashInfer y DeepGEMM se aplica sobre él: un batch de 25 a 31 se rellena a 32 y va por DeepGEMM. Hoy el núcleo usa el M real; lo modela la tarea 3.5b.
 - **El 3D es el riesgo principal de esfuerzo** (brief §2). Por eso el grupo 4 llega a un hito visible con datos reales temprano, en paralelo con el núcleo.
