@@ -19,7 +19,7 @@ use crate::error::CoreError;
 use crate::hardware::{HwNode, Level};
 use crate::model::{KvDtype, ModelConfig};
 use crate::quantity::{Confidence, Provenance};
-use crate::scenario::Scenario;
+use crate::scenario::{GRAPH_MAX_TOKENS, Scenario};
 
 const SOURCE_VLLM: &str = "vLLM v0.31.0 vllm/v1/attention/backends/flash_attn.py: max_num_splits = flash_attn_max_num_splits_for_cuda_graph (32) when num_actual_tokens <= max_cudagraph_capture_size, else 0 (FA3 heuristic); vllm/config/vllm.py: max_cudagraph_capture_size = min(2 · max_num_seqs, 512), with max_num_seqs = 1024 on H100 (vllm/engine/arg_utils.py)";
 const SOURCE_HOST: &str = "vllm-project/flash-attention 9cd61de hopper/flash_api.cpp: get_num_splits runs the heuristic as if batch = 1 under varlen; pack_gqa forced when d == dv; num_splits = 1 over 992 requests; causal kept for hdim 128 with a page table. hopper/heuristics.h: num_splits_heuristic, use_one_mma_wg";
@@ -28,8 +28,6 @@ const SOURCE_TILES: &str = "vllm-project/flash-attention 9cd61de hopper/tile_siz
 
 /// vLLM's split cap while a CUDA graph can hold the step.
 pub const GRAPH_SPLITS: u32 = 32;
-/// The most tokens vLLM captures in a CUDA graph on H100 by default.
-pub const GRAPH_MAX_TOKENS: u64 = 512;
 /// Requests the single prepare CTA handles; over it, every request gets 1
 /// split.
 pub(super) const PREPARE_MAX_BATCH: u64 = 992;

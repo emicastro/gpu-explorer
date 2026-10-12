@@ -20,7 +20,7 @@ use crate::hardware::{HwNode, TensorPrecision};
 use crate::model::{Fp8Scheme, ModelConfig, ScaleGranularity};
 use crate::ops::{Op, OpId, OpKind, Shape};
 use crate::quantity::{Confidence, Provenance};
-use crate::scenario::{Phase, Scenario, Weights};
+use crate::scenario::{GRAPH_PADDING_SOURCE, Phase, Scenario, Weights};
 use crate::units::{Bytes, Flops, Intensity, Seconds};
 
 const SOURCE_FORMULAS: &str = "brief §7.1: roofline formulas (GEMM 2·M·N·K; attention 4·B·T·n_q·d·S_ef; elementwise = read + write)";
@@ -449,7 +449,7 @@ impl<'a> Cx<'a> {
         };
         let w8a8 = self.scenario.weights.is_w8a8();
 
-        match (id.kind, &op.shape) {
+        let mut f = match (id.kind, &op.shape) {
             (PrepareInputs | AttentionSchedule, _) => flow(0.0, vec![], vec![], self.formulas()),
             (Embedding, &Shape::Rows { rows, cols }) => {
                 // One table row per token.
@@ -578,7 +578,7 @@ impl<'a> Cx<'a> {
             (Rope, &Shape::Rows { rows, cols }) => {
                 let c = &self.model.config;
                 let n = rows * cols;
-                let m = self.scenario.tokens();
+                let m = self.scenario.padded_tokens();
                 let (q, k) = (
                     m * c.num_attention_heads * c.head_dim,
                     m * c.num_key_value_heads * c.head_dim,
@@ -695,7 +695,14 @@ impl<'a> Cx<'a> {
                 )
             }
             (kind, shape) => unreachable!("step_ops never builds {kind:?} with {shape:?}"),
+        };
+        if id.kind.graph_padded() && self.scenario.padded_tokens() > self.scenario.tokens() {
+            f.provenance = f.provenance.join(&Provenance::new(
+                Confidence::Documented,
+                [GRAPH_PADDING_SOURCE],
+            ));
         }
+        f
     }
 
     /// The residual stream entering `layer`: the embedding's output for the
@@ -800,6 +807,7 @@ mod tests {
     use crate::fusion::fusion_profile;
     use crate::hardware::hardware;
     use crate::model::{KvDtype, model};
+    use crate::scenario::graph_size;
     use crate::units::Count;
 
     /// vLLM's split cap under CUDA graphs: what the host sees in decode.
@@ -940,6 +948,66 @@ mod tests {
     /// activations add `M · (N + K)` elements, which moves it to
     /// `M* = r · NK / (NK − r · (N + K))`: 322–345 for Qwen3-8B's shapes.
     #[test]
+    fn graph_padding_grows_activation_bytes_not_weights() {
+        // Batch 25 replays the graph captured for 32.
+        let padded = run(decode(25, 1024, Weights::Bf16), 1);
+        let one = run(decode(1, 1024, Weights::Bf16), 1);
+        let pads = |k: &KernelRoofline| k.provenance.sources().any(|s| s == GRAPH_PADDING_SOURCE);
+        for kind in GEMMS {
+            let (_, k) = padded.kernel(0, kind);
+            let (_, k1) = one.kernel(0, kind);
+            assert_eq!(k.cost.read.weights, k1.cost.read.weights, "{kind:?}");
+            assert_eq!(
+                k.cost.read.activations,
+                32.0 * k1.cost.read.activations,
+                "{kind:?}"
+            );
+            assert!(pads(k) && !pads(k1), "{kind:?}");
+        }
+        // The KV write and attention skip the padded rows.
+        let (_, kv) = padded.kernel(0, OpKind::KvWrite);
+        let (_, kv1) = one.kernel(0, OpKind::KvWrite);
+        assert_eq!(kv.cost.write.kv, 25.0 * kv1.cost.write.kv);
+        let (attn, _) = padded.op(0, OpKind::Attention);
+        let (attn1, _) = one.op(0, OpKind::Attention);
+        assert_eq!(attn.flops, 25.0 * attn1.flops);
+        // The throughput ceiling counts real tokens.
+        let bound = padded.roofline.lower_bound().0;
+        assert_eq!(
+            padded.roofline.tokens_per_second(&padded.scenario),
+            25.0 / bound
+        );
+    }
+
+    #[test]
+    fn graph_padding_pads_a_small_prefill_but_not_its_attention() {
+        // 300 tokens run in the PIECEWISE graph captured for 304.
+        let r = run(
+            Scenario {
+                phase: Phase::Prefill,
+                contexts: vec![300],
+                new_tokens: 300,
+                weights: Weights::Bf16,
+                kv: KvDtype::Bf16,
+            },
+            1,
+        );
+        let (_, qkv) = r.kernel(0, OpKind::QkvProj);
+        assert_eq!(qkv.cost.read.activations, Bytes(304.0 * H * BF16));
+        let (_, attn) = r.kernel(0, OpKind::Attention);
+        let q = 300.0 * 32.0 * 128.0 * BF16;
+        assert_eq!(attn.cost.write.activations, Bytes(q));
+    }
+
+    #[test]
+    fn graph_padding_stops_over_512_tokens() {
+        let r = run(decode(600, 1024, Weights::Bf16), 1);
+        let (_, qkv) = r.kernel(0, OpKind::QkvProj);
+        assert_eq!(qkv.cost.read.activations, Bytes(600.0 * H * BF16));
+        assert!(qkv.provenance.sources().all(|s| s != GRAPH_PADDING_SOURCE));
+    }
+
+    #[test]
     fn roofline_decode_gemms_cross_the_ridge_near_295() {
         let hw = hardware("h100-sxm").expect("valid preset");
         let (ridge, _) = hw.ridge(TensorPrecision::Bf16).expect("ridge");
@@ -952,7 +1020,9 @@ mod tests {
             let r = ridge.0;
             let want = r * n * k / (n * k - r * (n + k));
             assert!((295.0..350.0).contains(&want), "{kind:?}: {want}");
-            // The smallest M that is compute-bound.
+            // The smallest batch that is compute-bound. Its GEMMs run at
+            // the padded M, so `M*` falls between its captured size and
+            // the previous batch's.
             let (mut lo, mut hi) = (1, 1024);
             assert_eq!(limit(hi, kind), Limit::Compute, "{kind:?}");
             while hi - lo > 1 {
@@ -962,7 +1032,12 @@ mod tests {
                     Limit::Memory => lo = mid,
                 }
             }
-            assert_eq!(hi, want.ceil() as usize, "{kind:?} crosses at M = {hi}");
+            let m = |b: usize| graph_size(b as u64).expect("a captured size");
+            let want = want.ceil() as u64;
+            assert!(
+                m(hi - 1) < want && want <= m(hi),
+                "{kind:?}: batch {hi} crosses, M* = {want}"
+            );
         }
     }
 

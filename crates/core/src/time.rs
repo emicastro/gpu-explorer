@@ -16,8 +16,7 @@ use crate::error::CoreError;
 use crate::hardware::HwNode;
 use crate::quantity::{Confidence, Provenance, Quantity};
 use crate::roofline::{Limit, StepRoofline};
-use crate::scenario::{Phase, Scenario};
-use crate::tiling::fa3::GRAPH_MAX_TOKENS;
+use crate::scenario::{GRAPH_MAX_TOKENS, Phase, Scenario};
 use crate::tiling::{Launch, Sm};
 use crate::units::{Count, Flops, Ratio, Seconds};
 

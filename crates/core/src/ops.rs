@@ -67,6 +67,25 @@ impl OpKind {
     }
 }
 
+impl OpKind {
+    /// Whether the op runs on the step's padded rows
+    /// (`Scenario::padded_tokens`): every op inside the model but the KV
+    /// write and attention, which see only the real tokens (design §4.1).
+    pub fn graph_padded(self) -> bool {
+        use OpKind::*;
+        !matches!(
+            self,
+            PrepareInputs
+                | AttentionSchedule
+                | KvWrite
+                | Attention
+                | GatherLast
+                | LmHead
+                | Sampling
+        )
+    }
+}
+
 /// One op instance in a step: its kind and, for layer ops, its layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OpId {
@@ -74,7 +93,8 @@ pub struct OpId {
     pub kind: OpKind,
 }
 
-/// What an op works on. `M` is the token count of the step (`B · T`).
+/// What an op works on. `M` is the token count of the step (`B · T`), padded
+/// to its CUDA graph size where the op runs inside the graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Shape {
     /// `[m, k]` activations times a `[k, n]` weight.
@@ -108,11 +128,15 @@ pub struct Op {
 
 /// Every op of one step in execution order: the prologue, each layer's ops,
 /// then the epilogue. Quantization ops exist only for W8A8 weights.
+///
+/// Under a CUDA graph the model's ops run on `M` padded to the captured
+/// size. The KV write and attention skip the padded rows, and the LM head
+/// takes one row per real request.
 pub fn step_ops(model: &ModelConfig, scenario: &Scenario) -> Vec<Op> {
     let c = &model.config;
     let (h, d, i) = (c.hidden_size, c.head_dim, c.intermediate_size);
     let (n_q, n_kv) = (c.num_attention_heads, c.num_key_value_heads);
-    let (b, m) = (scenario.batch(), scenario.tokens());
+    let (b, m) = (scenario.batch(), scenario.padded_tokens());
     let rows = |rows, cols| Shape::Rows { rows, cols };
     let gemm = |m, n, k| Shape::Gemm { m, n, k };
 
@@ -137,7 +161,7 @@ pub fn step_ops(model: &ModelConfig, scenario: &Scenario) -> Vec<Op> {
             Some((
                 OpKind::KvWrite,
                 Shape::KvWrite {
-                    tokens: m,
+                    tokens: scenario.tokens(),
                     kv_heads: n_kv,
                     head_dim: d,
                 },
@@ -295,5 +319,41 @@ mod tests {
                 k: 4096
             }
         );
+    }
+
+    #[test]
+    fn graph_padding_reaches_the_model_ops_only() {
+        // Batch 3 replays the graph captured for 4.
+        let ops = ops_of(&scenario(Phase::Decode, 3, 1, Weights::Bf16));
+        let l = Some(0);
+        assert_eq!(
+            *shape(&ops, None, OpKind::Embedding),
+            Shape::Rows {
+                rows: 4,
+                cols: 4096
+            }
+        );
+        assert!(matches!(
+            *shape(&ops, l, OpKind::QkvProj),
+            Shape::Gemm { m: 4, .. }
+        ));
+        assert!(matches!(
+            *shape(&ops, l, OpKind::KvWrite),
+            Shape::KvWrite { tokens: 3, .. }
+        ));
+        assert!(matches!(
+            shape(&ops, l, OpKind::Attention),
+            Shape::Attention { contexts, .. } if contexts.len() == 3
+        ));
+        assert!(matches!(
+            *shape(&ops, None, OpKind::LmHead),
+            Shape::Gemm { m: 3, .. }
+        ));
+        // Over 512 tokens no graph holds the step.
+        let ops = ops_of(&scenario(Phase::Prefill, 2, 512, Weights::Bf16));
+        assert!(matches!(
+            *shape(&ops, l, OpKind::QkvProj),
+            Shape::Gemm { m: 1024, .. }
+        ));
     }
 }

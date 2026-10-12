@@ -69,7 +69,8 @@ Tensor que se escribe a HBM siempre, se fusione como se fusione, porque tiene qu
 Compilador de PyTorch que vLLM usa por defecto. Inductor genera kernels Triton que fusionan ops elementwise (norms, residual, activaciones); por eso esos kernels no están escritos a mano en vLLM.
 
 **CUDA graphs**:
-Grabar una secuencia de lanzamientos de kernels una vez y reproducirla entera con una sola llamada. vLLM lo usa en decode para recortar el overhead de lanzamiento.
+Grabar una secuencia de lanzamientos de kernels una vez y reproducirla entera con una sola llamada. vLLM lo usa en pasos de hasta 512 tokens para recortar el overhead de lanzamiento: en decode, el graph es FULL e incluye la atención; en prefill es PIECEWISE y la atención queda afuera.
+Cada graph se graba para un tamaño fijo, así que vLLM rellena el paso hasta el tamaño capturado más cercano (el **relleno**): las GEMMs de un batch de 25 trabajan con M = 32.
 
 ## Rendimiento
 

@@ -5,6 +5,25 @@ use serde::{Deserialize, Serialize};
 use crate::error::CoreError;
 use crate::model::KvDtype;
 
+/// The most tokens vLLM captures in a CUDA graph on H100 by default.
+pub const GRAPH_MAX_TOKENS: u64 = 512;
+
+/// Where the CUDA graph padding comes from (design §4.1).
+pub const GRAPH_PADDING_SOURCE: &str = "vLLM v0.31.0 vllm/config/compilation.py: cudagraph_capture_sizes = [1, 2, 4] + range(8, 256, 8) + range(256, max_cudagraph_capture_size + 1, 16); vllm/v1/cudagraph_dispatcher.py: a step of up to max_cudagraph_capture_size tokens is padded to the next captured size, FULL for uniform decode and PIECEWISE otherwise; vllm/v1/worker/gpu_model_runner.py: the model runs on input_ids[:num_tokens_padded] and only hidden_states[logits_indices] reach the LM head; with a FULL graph (pad_attn) the attention metadata adds requests of zero query and KV length, and slot_mapping is padded with -1";
+
+/// The CUDA graph size vLLM pads a step of `tokens` to, or `None` when no
+/// graph holds it: `[1, 2, 4]`, then multiples of 8 up to 248, then of 16
+/// up to 512.
+pub fn graph_size(tokens: u64) -> Option<u64> {
+    match tokens {
+        0..=2 | 4 => Some(tokens),
+        3 => Some(4),
+        5..=255 => Some(tokens.next_multiple_of(8)),
+        256..=GRAPH_MAX_TOKENS => Some(tokens.next_multiple_of(16)),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Phase {
@@ -56,6 +75,25 @@ impl Scenario {
         self.batch() * u64::from(self.new_tokens)
     }
 
+    /// Rows the model's kernels run on: `M` padded to the CUDA graph vLLM
+    /// replays the step from, or `M` itself when no graph holds the step.
+    /// Attention, the KV write and the kernels outside the model (inputs,
+    /// LM head, sampling) still see `M`.
+    pub fn padded_tokens(&self) -> u64 {
+        graph_size(self.tokens()).unwrap_or(self.tokens())
+    }
+
+    /// Requests in the attention metadata vLLM builds for the step. Decode
+    /// replays a FULL graph, which pads them to the captured size with
+    /// empty requests. Prefill runs attention outside its PIECEWISE graph,
+    /// on the real batch.
+    pub fn metadata_batch(&self) -> u64 {
+        match self.phase {
+            Phase::Decode => self.padded_tokens(),
+            Phase::Prefill => self.batch(),
+        }
+    }
+
     pub fn validate(&self) -> Result<(), CoreError> {
         let invalid = |msg: &str| Err(CoreError::InvalidScenario(msg.to_owned()));
         if self.contexts.is_empty() {
@@ -97,6 +135,38 @@ mod tests {
             ..decode(2)
         };
         assert_eq!(prefill.tokens(), 1024);
+    }
+
+    #[test]
+    fn graph_padding_rounds_up_to_the_captured_sizes() {
+        let sizes = [
+            (1, 1),
+            (2, 2),
+            (3, 4),
+            (5, 8),
+            (25, 32),
+            (248, 248),
+            (249, 256),
+        ];
+        for (tokens, size) in sizes.into_iter().chain([(257, 272), (512, 512)]) {
+            assert_eq!(graph_size(tokens), Some(size), "{tokens}");
+        }
+        assert_eq!(graph_size(513), None);
+    }
+
+    #[test]
+    fn graph_padding_metadata_batch_pads_only_in_decode() {
+        assert_eq!(decode(25).padded_tokens(), 32);
+        assert_eq!(decode(25).metadata_batch(), 32);
+        assert_eq!(decode(600).padded_tokens(), 600);
+        let prefill = Scenario {
+            phase: Phase::Prefill,
+            new_tokens: 300,
+            contexts: vec![300],
+            ..decode(1)
+        };
+        assert_eq!(prefill.padded_tokens(), 304);
+        assert_eq!(prefill.metadata_batch(), 1);
     }
 
     #[test]

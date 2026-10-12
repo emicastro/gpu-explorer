@@ -130,7 +130,8 @@ pub struct When {
     /// Any of these weight formats.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weights: Option<Vec<Weights>>,
-    /// Rows of the activations, `M = B · T`.
+    /// Rows of the model's activations: `M = B · T`, padded to the CUDA
+    /// graph size (`Scenario::padded_tokens`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tokens: Option<Bound>,
     /// The split count FA3's host code sees (see `FusionProfile::fuse`).
@@ -247,7 +248,7 @@ impl FusionProfile {
         let facts = |first_layer| Facts {
             phase: scenario.phase,
             weights: scenario.weights,
-            tokens: scenario.tokens(),
+            tokens: scenario.padded_tokens(),
             attention_splits: u64::from(attention_splits),
             first_layer,
         };
@@ -529,6 +530,21 @@ mod tests {
         assert_eq!(&impls(l)[1..3], [Fp8ActQuant, DeepgemmSm90]);
         assert_eq!(l[1].name, "per_token_group_quant_8bit_kernel");
         assert_eq!((gemms(l, Fp8ActQuant), gemms(l, DeepgemmSm90)), (4, 4));
+    }
+
+    #[test]
+    fn graph_padding_sends_batch_25_through_deepgemm() {
+        // 24 is a captured size; 25 replays the graph for 32, so M = 32.
+        let l = |batch| impls(&layer(&decode(batch, Weights::Fp8Block), 1)[1..3]);
+        assert_eq!(l(24), [Fp8ActQuant, FlashinferSwapab]);
+        assert_eq!(l(25), [Fp8ActQuant, DeepgemmSm90]);
+        let step = decode(25, Weights::Fp8Block);
+        let qkv = step
+            .ops
+            .iter()
+            .find(|op| op.id == id(1, OpKind::QkvProj))
+            .expect("QKV in step");
+        assert!(matches!(qkv.shape, crate::ops::Shape::Gemm { m: 32, .. }));
     }
 
     #[test]

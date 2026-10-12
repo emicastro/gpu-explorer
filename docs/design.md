@@ -84,6 +84,10 @@ pub fn evaluate(hw: &str, model: &str, scenario: &Scenario) -> Result<StepPlan, 
 
 - `ops.rs` genera las ops lógicas de un paso de Qwen3 (brief §6.5, lista 1–11, y las de fuera del loop), cada una con su capa y sus formas (M, N, K o filas × columnas). Los bytes y FLOPs "sueltos" salen de esas formas (§4.2).
   - Con pesos W8A8 (`fp8_block`, `fp8_tensor`) se agregan cuatro ops de cuantización de la activación por capa, una antes de cada GEMM. W8A16 no cuantiza la activación.
+- **Relleno de CUDA graphs** (`documented`, vLLM v0.31.0: `config/compilation.py`, `v1/cudagraph_dispatcher.py`, `v1/worker/gpu_model_runner.py`, `v1/attention/backends/flash_attn.py`). Un paso de hasta 512 tokens se rellena hasta el tamaño capturado más cercano (`[1, 2, 4]`, de 8 a 248 de a 8, de 256 a 512 de a 16). En decode corre un graph FULL, que incluye la atención. En prefill corre uno PIECEWISE, con la atención fuera del graph.
+  - Las ops del modelo ven el M rellenado (`Scenario::padded_tokens`): embeddings, norms, cuantización, las cuatro GEMMs, QK-norm + RoPE y SiLU·mul. Las plantillas de fusión se eligen con ese M, así que un batch de 25 a 31 va por DeepGEMM.
+  - La escritura al KV y la atención ven solo los tokens reales. En PIECEWISE la atención usa la metadata real. En FULL la metadata se rellena con requests de largo 0 (query y KV) y el `slot_mapping` con −1, así que FA3, `combine` y la escritura al KV no hacen trabajo de más. Solo el `prepare` de FA3 ve el batch rellenado (`Scenario::metadata_batch`).
+  - Lo que corre fuera del modelo ve el batch real: la preparación de inputs, el gather del último token, el LM head (`hidden_states[logits_indices]`) y el sampling.
 - El perfil de fusión es **dato**, con la forma de [ADR 0011](adr/0011-fusion-profile-shape.md): tres listas ordenadas de plantillas (`prologue`, `layer`, `epilogue`). Cada plantilla tiene:
   - `name` (el nombre del kernel, p. ej. `triton_red_fused_fused_add_rms_norm`, `FlashAttnFwdSm90`, `FlashAttnFwdCombine`);
   - `ops` (los tipos de op que fusiona; `kind@prev` es la op de la capa anterior);
@@ -113,8 +117,10 @@ Fórmulas del brief §7.1, sin cambios.
   - Por ejemplo, el kernel residual + RMSNorm lee 2 tensores `[M, h]` y el peso de la norma, y escribe 2: la salida normalizada y el residual nuevo, que la suma residual siguiente vuelve a leer.
   - Con split-KV, FA3 escribe parciales fp32 (salida y LSE por split y cabeza Q) y `combine` los lee. Eso hace que el "ahorro" de `combine` sea negativo. `roofline` recibe los splits de cada request (§4.3). Un request con 1 split no tiene parciales: FA3 escribe su salida directo y `combine` lo saltea. Es `documented` (FA3 `9cd61de`). La LSE final (4 B por cabeza Q y token) no se cuenta.
   - No se cuentan los tensores de índices y metadatos (ids de token, slot mappings, block tables) ni la tabla cos/sin de RoPE.
-- Los kernels se ejecutan en serie. La cota del paso es la suma de las cotas de sus kernels, y el techo de throughput es `M / cota`.
+  - Con relleno de CUDA graph (§4.1), las ops rellenadas leen y escriben las filas del relleno, y su procedencia cita la fuente del relleno. Los bytes de pesos no cambian, salvo las filas de la tabla de embeddings, que se leen por token.
+- Los kernels se ejecutan en serie. La cota del paso es la suma de las cotas de sus kernels, y el techo de throughput es `M / cota`, con el M real.
 - Con las activaciones contadas, las GEMMs de decode cruzan el ridge en `M* = r·NK / (NK − r·(N+K))`, con `r` el ridge. Para las formas de Qwen3-8B eso da entre 322 y 345, no exactamente 295. El 295 sale de contar solo los pesos.
+  - Con el relleno, el primer batch que cruza es el primero cuyo tamaño capturado pasa `M*`. Por encima de 256 los tamaños van de a 16, así que puede ser hasta 15 menos que `M*`.
 
 ### 4.3 Tiling y ondas (R3)
 
@@ -142,11 +148,12 @@ Un módulo por `impl` bajo `tiling/`. Cada uno devuelve un `Launch { blocks, til
   - DeepGEMM: candidatos de bloque y cluster, filtros de registros, unroll del kernel 1D2D y etapas de pipeline. Gana el de menos ciclos según su modelo de tráfico L1/L2 dividido por la eficiencia de onda, con la aritmética entera y `float` del C++.
   - CUTLASS: la tabla por rango de M (swap AB hasta M = 64). Los tiles se redondean a clusters enteros. Con clusters de más de una CTA, el grid es `get_max_cta_occupancy`: 132 con clusters de 2, 116 con clusters de 4.
   - No se modela split-K.
+- Las GEMMs, la cuantización y los kernels de Inductor cortan sus tiles sobre el M rellenado (§4.1).
 - **Resto de los kernels** (`tiling::{fa3_aux, marlin, engine}`; `tiling::launch` despacha por `impl`):
-  - `prepare` (FA3): `⌈b / 992⌉` CTAs de `32 · min(⌈b / 31⌉, 32)` hilos (warps redondeados a potencia de 2).
+  - `prepare` (FA3): `⌈b / 992⌉` CTAs de `32 · min(⌈b / 31⌉, 32)` hilos (warps redondeados a potencia de 2), con `b` el batch de la metadata: rellenado en decode.
   - `combine` (FA3): tile `kBlockM × kBlockK` = 8×128 (16×64 si `dv ≤ 64`), 256 hilos, `b · ⌈T · h / kBlockM⌉ · ⌈dv / kBlockK⌉` CTAs. Con grids ralos el scheduler lanza `⌈total_q · h / kBlockM⌉ + b` y las sobrantes salen al instante; `blocks` cuenta solo las que trabajan.
   - Marlin: persistente, 132 CTAs; la config `{thread_k, thread_n}` sale de `determine_exec_config` (`simplified`: no se chequea la shared memory, y un M grande se cuenta como un solo lanzamiento).
-  - Cache write: una CTA por token. Cuantización FP8: FlashInfer lanza `8 · SMs` CTAs fijas (M < 32); vLLM, una CTA por 32 grupos de 128. `index`: una CTA de 128 hilos por 512 elementos. Sampling: una CTA por request. Inputs: grids de la traza D14 según el kernel y la cantidad de requests.
+  - Cache write: una CTA por token real. Con el relleno, las CTAs de los tokens de relleno salen al instante (`slot_mapping` = −1) y no se cuentan. Cuantización FP8: FlashInfer lanza `8 · SMs` CTAs fijas (M < 32); vLLM, una CTA por 32 grupos de 128. `index`: una CTA de 128 hilos por 512 elementos. Sampling: una CTA por request. Inputs: grids de la traza D14 según el kernel y la cantidad de requests.
   - Registros y shared memory de `combine`, `prepare` y los kernels de `engine` no están citados, así que `slots` cuenta solo el límite de hilos (ADR 0013).
 - Kernels no persistentes: `slots = SMs × CTAs por SM`, el mínimo de los límites de hilos, bloques, registros y shared memory del SM (`tiling::Sm`, ADR 0013).
 - Kernels persistentes (FA3 varlen, DeepGEMM, FlashInfer): grid de 132 CTAs. Las "ondas" son las rondas de tiles que reparte el scheduler: `ondas = ⌈tiles / 132⌉`.
@@ -313,5 +320,5 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 - **Agrupación de kernels en H100 sin traza propia** (brief D14 y §12): la fusión de la cuantización por token en el camino FP8 por tensor queda `simplified` hasta tener una corrida en H100. La saturación de HBM (`sms_para_saturar` = 32) y el `t_overhead` por kernel quedan `estimated` (§4.4). Una traza de nsys en H100 los reemplazaría por medidas. La cuantización del camino FP8 por bloques ya no es una incógnita: el código fuente la deja en un kernel aparte (§4.1).
 - **El tiling de cuBLAS BF16 es una aproximación** (`simplified`). Es el camino BF16, el que más se va a mirar; la UI tiene que decirlo con claridad.
-- **Relleno de CUDA graphs.** En decode, vLLM rellena el batch hasta el tamaño capturado más cercano (`[1, 2, 4] + 8..248 de a 8 + 256..512 de a 16`). Las GEMMs ven ese M y no el real, y el corte de M = 32 entre FlashInfer y DeepGEMM se aplica sobre él: un batch de 25 a 31 se rellena a 32 y va por DeepGEMM. Hoy el núcleo usa el M real; lo modela la tarea 3.5b.
+- **Overhead por kernel en prefill chico.** Un prefill de hasta 512 tokens corre en un graph PIECEWISE (§4.1): los kernels del modelo se reproducen desde el graph y la atención no. `time::realistic` le cobra a todo el paso el overhead sin graphs (6 µs). Queda `estimated`, como el resto de la calibración (§4.4).
 - **El 3D es el riesgo principal de esfuerzo** (brief §2). Por eso el grupo 4 llega a un hito visible con datos reales temprano, en paralelo con el núcleo.

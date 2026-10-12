@@ -190,7 +190,7 @@ pub fn launch(
             )),
             _ => unreachable!("matched as attention"),
         },
-        Impl::Fa3Prepare => Ok(fa3_aux::prepare(scenario.batch(), sm)),
+        Impl::Fa3Prepare => Ok(fa3_aux::prepare(scenario.metadata_batch(), sm)),
         Impl::VllmCacheWrite => match shape("kv")? {
             Shape::KvWrite {
                 tokens,
@@ -272,6 +272,41 @@ mod tests {
         assert_eq!(sm.ctas_per_sm(128, 46, 0), 11);
         // Shared memory binds a 120 KB CTA to 1.
         assert_eq!(sm.ctas_per_sm(256, 64, 120_000), 1);
+    }
+
+    #[test]
+    fn graph_padding_launches() {
+        let hw = hardware("h100-sxm").expect("valid preset");
+        let qwen = model("qwen3-8b").expect("valid preset");
+        let sm = Sm::new(&hw).expect("sm limits");
+        // Batch 25 replays the decode graph captured for 32.
+        let scenario = Scenario {
+            phase: Phase::Decode,
+            contexts: vec![8192; 25],
+            new_tokens: 1,
+            weights: Weights::Fp8Block,
+            kv: KvDtype::Bf16,
+        };
+        let schedule = fa3::fa3(&qwen, &scenario, &hw).expect("schedules");
+        let step = fusion_profile("vllm-0.31.0-h100")
+            .expect("valid preset")
+            .fuse(&qwen, &scenario, schedule.host_splits)
+            .expect("fuses");
+        // The first kernel of each `impl`.
+        let first = |imp: Impl| {
+            let k = step.kernels.iter().find(|k| k.imp == imp).expect("kernel");
+            launch(k, &step, &scenario, &schedule, &sm).expect("launch")
+        };
+        // The embedding + RMSNorm runs one CTA per padded token; the KV
+        // write's padded CTAs exit at once.
+        assert_eq!(first(Impl::InductorElementwise).blocks, 32);
+        assert_eq!(first(Impl::VllmCacheWrite).blocks, 25);
+        // The QKV GEMM sees M = 32, and FA3's prepare 32 requests (2 warps).
+        let qkv = deepgemm::launch(32, 6144, 4096, &sm).expect("launch");
+        assert_eq!(first(Impl::DeepgemmSm90), qkv);
+        assert_eq!(first(Impl::Fa3Prepare).tile.n, 64);
+        // Sampling sees the real requests.
+        assert_eq!(first(Impl::Sampling).blocks, 25);
     }
 
     #[test]
