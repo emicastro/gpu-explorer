@@ -142,6 +142,12 @@ Un módulo por `impl` bajo `tiling/`. Cada uno devuelve un `Launch { blocks, til
   - CUTLASS: la tabla por rango de M (swap AB hasta M = 64). Los tiles se redondean a clusters enteros. Con clusters de más de una CTA, el grid es `get_max_cta_occupancy`: 132 con clusters de 2, 116 con clusters de 4.
   - No se modela split-K.
 - Kernels no persistentes: `slots = SMs × CTAs por SM`, el mínimo de los límites de hilos, bloques, registros y shared memory del SM (`tiling::Sm`, ADR 0013).
+- **Resto de los kernels** (`tiling::{fa3_aux, marlin, engine}`; `tiling::launch` despacha por `impl`):
+  - `prepare` (FA3): `⌈b / 992⌉` CTAs de `32 · min(⌈b / 31⌉, 32)` hilos (warps redondeados a potencia de 2).
+  - `combine` (FA3): tile `kBlockM × kBlockK` = 8×128 (16×64 si `dv ≤ 64`), 256 hilos, `b · ⌈T · h / kBlockM⌉ · ⌈dv / kBlockK⌉` CTAs. Con grids ralos el scheduler lanza `⌈total_q · h / kBlockM⌉ + b` y las sobrantes salen al instante; `blocks` cuenta solo las que trabajan.
+  - Marlin: persistente, 132 CTAs; la config `{thread_k, thread_n}` sale de `determine_exec_config` (`simplified`: no se chequea la shared memory, y un M grande se cuenta como un solo lanzamiento).
+  - Cache write: una CTA por token. Cuantización FP8: FlashInfer lanza `8 · SMs` CTAs fijas (M < 32); vLLM, una CTA por 32 grupos de 128. `index`: una CTA de 128 hilos por 512 elementos. Sampling: una CTA por request. Inputs: grids de la traza D14 según el kernel y la cantidad de requests.
+  - Registros y shared memory de `combine`, `prepare` y los kernels de `engine` no están citados, así que `slots` cuenta solo el límite de hilos (ADR 0013).
 - Kernels persistentes (FA3 varlen, DeepGEMM, FlashInfer): grid de 132 CTAs. Las "ondas" son las rondas de tiles que reparte el scheduler: `ondas = ⌈tiles / 132⌉`.
 - `per_wave[i]` = tiles activos en la ronda `i`. El 3D asigna tiles a SMs en orden de índice de SM. El scheduler real no es determinista, así que esa asignación es `simplified`.
 

@@ -3,14 +3,21 @@
 
 pub mod cutlass;
 pub mod deepgemm;
+pub mod engine;
 pub mod fa3;
+pub mod fa3_aux;
 pub mod flashinfer;
 pub mod inductor;
+pub mod marlin;
 
 use crate::error::CoreError;
+use crate::fusion::{FusedStep, Impl, Kernel};
 use crate::hardware::{HwNode, Level};
+use crate::ops::{Op, Shape};
 use crate::quantity::Provenance;
+use crate::scenario::Scenario;
 use crate::units::{Bytes, Count};
+use fa3::Fa3Schedule;
 
 /// The output tile one CTA computes, as `M × N × K` of its main MMA. For a
 /// swap-AB GEMM, `m` runs over the weight's rows and `n` over the tokens.
@@ -103,6 +110,115 @@ impl Sm {
     }
 }
 
+/// The launch of `kernel`, one of `step`'s kernels, with the module that
+/// owns its `impl`. `fa3` is the step's attention schedule (`fa3::fa3`).
+pub fn launch(
+    kernel: &Kernel,
+    step: &FusedStep,
+    scenario: &Scenario,
+    fa3: &Fa3Schedule,
+    sm: &Sm,
+) -> Result<Launch, CoreError> {
+    let ops: Vec<&Op> = kernel
+        .ops
+        .iter()
+        .filter_map(|id| step.ops.iter().find(|op| op.id == *id))
+        .collect();
+    let shape = |what: &str| {
+        ops.iter()
+            .map(|op| &op.shape)
+            .find(|s| {
+                matches!(
+                    (what, s),
+                    ("gemm", Shape::Gemm { .. })
+                        | ("rows", Shape::Rows { .. })
+                        | ("kv", Shape::KvWrite { .. })
+                        | ("attention", Shape::Attention { .. })
+                )
+            })
+            .ok_or_else(|| {
+                CoreError::InvalidData(format!(
+                    "kernel {:?} ({:?}) has no {what} op",
+                    kernel.name, kernel.imp
+                ))
+            })
+    };
+    let gemm = || match shape("gemm")? {
+        Shape::Gemm { m, n, k } => Ok((*m, *n, *k)),
+        _ => unreachable!("matched as a GEMM"),
+    };
+    let rows = || match shape("rows")? {
+        Shape::Rows { rows, cols } => Ok((*rows, *cols)),
+        _ => unreachable!("matched as rows"),
+    };
+    match kernel.imp {
+        Impl::InductorElementwise => inductor::launch(&ops, sm),
+        Impl::CublasBf16 => {
+            let (m, n, k) = gemm()?;
+            Ok(cutlass::cublas_bf16(m, n, k, sm))
+        }
+        Impl::CutlassFp8Tensor => {
+            let (m, n, k) = gemm()?;
+            Ok(cutlass::fp8_tensor(m, n, k, sm))
+        }
+        Impl::FlashinferSwapab => {
+            let (m, n, k) = gemm()?;
+            Ok(flashinfer::launch(m, n, k, sm))
+        }
+        Impl::DeepgemmSm90 => {
+            let (m, n, k) = gemm()?;
+            deepgemm::launch(m, n, k, sm)
+        }
+        Impl::MarlinW8a16 => {
+            let (m, n, k) = gemm()?;
+            Ok(marlin::launch(m, n, k, sm))
+        }
+        Impl::Fa3 => Ok(fa3.launch.clone()),
+        Impl::Fa3Combine => match shape("attention")? {
+            Shape::Attention {
+                new_tokens,
+                q_heads,
+                head_dim,
+                ..
+            } => Ok(fa3_aux::combine(
+                scenario.batch(),
+                u64::from(*new_tokens),
+                *q_heads,
+                *head_dim,
+                fa3.launch.splits,
+                sm,
+            )),
+            _ => unreachable!("matched as attention"),
+        },
+        Impl::Fa3Prepare => Ok(fa3_aux::prepare(scenario.batch(), sm)),
+        Impl::VllmCacheWrite => match shape("kv")? {
+            Shape::KvWrite {
+                tokens,
+                kv_heads,
+                head_dim,
+            } => Ok(engine::cache_write(*tokens, *kv_heads, *head_dim, sm)),
+            _ => unreachable!("matched as a KV write"),
+        },
+        Impl::Fp8ActQuant => {
+            let (rows, cols) = rows()?;
+            Ok(if rows < 32 {
+                engine::flashinfer_quant(sm)
+            } else {
+                engine::vllm_group_quant(rows, cols, sm)
+            })
+        }
+        Impl::VllmPrepareInputs => engine::prepare_inputs(&kernel.name, scenario.batch(), sm),
+        Impl::TorchIndex => {
+            let (requests, hidden) = rows()?;
+            Ok(engine::index(requests, hidden, sm))
+        }
+        Impl::Sampling => {
+            let (requests, vocab) = rows()?;
+            Ok(engine::sampling(requests, vocab, sm))
+        }
+    }
+}
+
 /// The first node in `node`'s subtree, depth first, that matches `pred`.
 fn first<'a>(node: &'a HwNode, pred: &impl Fn(&HwNode) -> bool) -> Option<&'a HwNode> {
     if pred(node) {
@@ -123,7 +239,11 @@ fn per_wave(blocks: u64, slots: u64) -> Vec<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fusion::fusion_profile;
     use crate::hardware::hardware;
+    use crate::model::{KvDtype, model};
+    use crate::quantity::Confidence;
+    use crate::scenario::{Phase, Weights};
 
     #[test]
     fn per_wave_fills_every_round_but_the_last() {
@@ -152,5 +272,70 @@ mod tests {
         assert_eq!(sm.ctas_per_sm(128, 46, 0), 11);
         // Shared memory binds a 120 KB CTA to 1.
         assert_eq!(sm.ctas_per_sm(256, 64, 120_000), 1);
+    }
+
+    #[test]
+    fn every_kernel_of_every_scenario_has_a_sourced_launch() {
+        let hw = hardware("h100-sxm").expect("valid preset");
+        let qwen = model("qwen3-8b").expect("valid preset");
+        let profile = fusion_profile("vllm-0.31.0-h100").expect("valid preset");
+        let sm = Sm::new(&hw).expect("sm limits");
+        for (phase, new_tokens) in [(Phase::Decode, 1), (Phase::Prefill, 256)] {
+            for weights in [
+                Weights::Bf16,
+                Weights::Fp8Block,
+                Weights::Fp8Tensor,
+                Weights::Fp8W8a16,
+            ] {
+                for kv in [KvDtype::Bf16, KvDtype::Fp8] {
+                    for batch in [1, 3, 25, 64] {
+                        let scenario = Scenario {
+                            phase,
+                            contexts: vec![8192; batch],
+                            new_tokens,
+                            weights,
+                            kv,
+                        };
+                        let schedule = fa3::fa3(&qwen, &scenario, &hw).expect("schedules");
+                        let step = profile
+                            .fuse(&qwen, &scenario, schedule.host_splits)
+                            .expect("fuses");
+                        let label = format!("{phase:?} {weights:?} {kv:?} batch {batch}");
+                        for kernel in &step.kernels {
+                            let l = launch(kernel, &step, &scenario, &schedule, &sm)
+                                .unwrap_or_else(|e| {
+                                    panic!("{label}: {} ({:?}): {e}", kernel.name, kernel.imp)
+                                });
+                            let what = format!("{label}: {} ({:?})", kernel.name, kernel.imp);
+                            assert!(l.blocks > 0 && l.slots > 0, "{what}");
+                            assert_eq!(
+                                l.per_wave.iter().map(|&w| u64::from(w)).sum::<u64>(),
+                                l.blocks,
+                                "{what}"
+                            );
+                            assert!(l.provenance.sources().count() > 0, "{what}");
+                            // Only the dominant kernels may claim more than
+                            // `simplified` (design §4.3).
+                            let documented = matches!(
+                                kernel.imp,
+                                Impl::Fa3
+                                    | Impl::Fa3Combine
+                                    | Impl::Fa3Prepare
+                                    | Impl::FlashinferSwapab
+                                    | Impl::DeepgemmSm90
+                                    | Impl::CutlassFp8Tensor
+                            );
+                            if !documented {
+                                assert_eq!(
+                                    l.provenance.confidence(),
+                                    Confidence::Simplified,
+                                    "{what}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

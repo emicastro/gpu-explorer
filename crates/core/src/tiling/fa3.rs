@@ -32,7 +32,7 @@ pub const GRAPH_SPLITS: u32 = 32;
 pub const GRAPH_MAX_TOKENS: u64 = 512;
 /// Requests the single prepare CTA handles; over it, every request gets 1
 /// split.
-const PREPARE_MAX_BATCH: u64 = 992;
+pub(super) const PREPARE_MAX_BATCH: u64 = 992;
 /// FA3's ceiling on the heuristic's splits.
 const HEURISTIC_MAX_SPLITS: u64 = 128;
 /// The L2 size FA3's heuristic assumes.
