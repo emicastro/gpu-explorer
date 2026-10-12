@@ -84,9 +84,12 @@ const playbackSlice: Slice<PlaybackSlice> = (set) => ({
 
 const navigationSlice: Slice<NavigationSlice> = (set, get) => {
   const send = (event: NavEvent) => {
-    const { path, picks, from } = get();
+    const { path, picks, from, selection } = get();
     const next = navReduce({ path, picks, from }, event);
-    if (next.path !== path || next.picks !== picks || next.from !== from) set(next);
+    if (next.path === path && next.picks === picks && next.from === from) return;
+    // A component panel is about the level it was opened on.
+    const moved = next.path !== path || next.picks !== picks;
+    set(moved && selection?.kind === 'component' ? { ...next, selection: null } : next);
   };
   return {
     ...INITIAL_NAV,

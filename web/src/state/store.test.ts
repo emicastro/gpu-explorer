@@ -75,3 +75,22 @@ describe('store slices', () => {
     expect(toScenario({ ...knobs, phase: 'prefill' }).newTokens).toBe(4096);
   });
 });
+
+describe('component selection and navigation', () => {
+  it('closes a component panel when the level changes, and leaves a kernel selection alone', () => {
+    const s = useStore.getState();
+    s.select({ kind: 'component', id: 'die' });
+    s.enter('die');
+    expect(useStore.getState().selection).toBeNull();
+    useStore.getState().select({ kind: 'kernel', index: 3 });
+    useStore.getState().back();
+    expect(useStore.getState().selection).toEqual({ kind: 'kernel', index: 3 });
+  });
+
+  it('keeps a component panel while the camera settles', () => {
+    useStore.getState().enter('die');
+    useStore.getState().select({ kind: 'component', id: 'die' });
+    useStore.getState().settle();
+    expect(useStore.getState().selection).toEqual({ kind: 'component', id: 'die' });
+  });
+});
