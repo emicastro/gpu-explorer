@@ -43,6 +43,25 @@ export function nodeAtLevel(root: HwNode, level: HwNode['level']): HwNode {
   throw new Error(`hardware tree has no ${level} node`);
 }
 
+/** The node with this id; ids are unique across the tree. */
+export function findNode(root: HwNode, id: string): HwNode {
+  if (root.id === id) return root;
+  for (const c of root.children) {
+    const found = findNodeOrNull(c, id);
+    if (found) return found;
+  }
+  throw new Error(`hardware tree has no node ${id}`);
+}
+
+function findNodeOrNull(root: HwNode, id: string): HwNode | null {
+  if (root.id === id) return root;
+  for (const c of root.children) {
+    const found = findNodeOrNull(c, id);
+    if (found) return found;
+  }
+  return null;
+}
+
 function child(node: HwNode, id: string): HwNode {
   const found = node.children.find((c) => c.id === id);
   if (!found) throw new Error(`${node.id} has no child ${id}`);
@@ -53,8 +72,11 @@ function range(n: number): number[] {
   return Array.from({ length: n }, (_, i) => i);
 }
 
-/** Levels a click can enter. Task 5.1 adds the GPC and below. */
-const ENTERABLE = new Set<PartKind>(['die']);
+/** A level's frame in its parent's: uniform scale, then translation (ADR 0019). */
+export type { Frame } from '../nav/camera.ts';
+
+/** Every level's plate is this wide in its own units; the depth follows the tile it covers. */
+export const PLATE_WIDTH = 4.2;
 
 function part(
   kind: PartKind,
@@ -63,6 +85,7 @@ function part(
   position: Vec3,
   size: Vec3,
   enabled = true,
+  enterable = false,
 ): Placement {
   return {
     key: `${kind}:${nodeId}#${String(instance)}`,
@@ -72,7 +95,7 @@ function part(
     position,
     size,
     enabled,
-    enterId: ENTERABLE.has(kind) ? nodeId : null,
+    enterId: enterable ? nodeId : null,
   };
 }
 
@@ -134,7 +157,7 @@ export function layoutPackage(pkg: HwNode): Placement[] {
     part('stiffener', pkg.id, 3, [(sw - STIFFENER_WIDTH) / 2, frameY, 0], [STIFFENER_WIDTH, STIFFENER_HEIGHT, sd - 2 * STIFFENER_WIDTH]),
     part('interposer', pkg.id, 0, [0, INTERPOSER_TOP - 0.05, 0], [3, 0.1, 2.2]),
   ];
-  const chips: Placement[] = [part('die', die.id, 0, [0, PACKAGE_DIE_Y, 0], PACKAGE_DIE)];
+  const chips: Placement[] = [part('die', die.id, 0, [0, PACKAGE_DIE_Y, 0], PACKAGE_DIE, true, true)];
   for (const i of range(sites)) {
     const column = Math.floor(i / HBM_ROWS);
     const row = i % HBM_ROWS;
@@ -154,31 +177,42 @@ const SM_INSET = 0.04;
 const SM_GAP = 0.025;
 const SM_HEIGHT = 0.06;
 
-/**
- * The SM tiles on top of one GPC (the detail rule of ADR 0017: they look
- * countable, so the count is the tree's). TPCs fill columns left to right;
- * the last `count - enabled` TPCs are the fused-off ones, a `simplified`
- * choice since which TPCs are off varies per chip.
- */
-function smTiles(gpc: Placement, variant: HwNode): Placement[] {
+function gpcParts(variant: HwNode) {
   const tpc = variant.children.find((c) => c.level === 'tpc');
   const sm = tpc?.children.find((c) => c.level === 'sm');
   if (!tpc || !sm) throw new Error(`${variant.id} has no TPC with SMs`);
+  return { tpc, sm };
+}
+
+/** The grid the SMs of a GPC sit on, in units where the GPC tile is `GPC` times `k`. */
+function smGrid(variant: HwNode, k: number) {
+  const { tpc, sm } = gpcParts(variant);
   const tpcs = instances(tpc);
   const perTpc = instances(sm);
-  const perGpc = tpcs * perTpc;
   const rows = Math.ceil(tpcs / TPC_COLUMNS) * perTpc;
-  const cellW = (gpc.size[0] - 2 * SM_INSET) / TPC_COLUMNS;
-  const cellD = (gpc.size[2] - 2 * SM_INSET) / rows;
-  const size: Vec3 = [cellW - SM_GAP, SM_HEIGHT, cellD - SM_GAP];
-  const y = gpc.position[1] + gpc.size[1] / 2 + SM_HEIGHT / 2;
-  return range(perGpc).map((k) => {
-    const t = Math.floor(k / perTpc);
+  const cellW = (GPC[0] * k - 2 * SM_INSET * k) / TPC_COLUMNS;
+  const cellD = (GPC[2] * k - 2 * SM_INSET * k) / rows;
+  return { tpc, sm, tpcs, perTpc, rows, cellW, cellD, size: [cellW - SM_GAP * k, SM_HEIGHT * k, cellD - SM_GAP * k] as Vec3 };
+}
+
+/**
+ * The SM tiles on top of one GPC plate scaled by `k` (the detail rule of ADR
+ * 0017: they look countable, so the count is the tree's). TPCs fill columns
+ * left to right; the last `count - enabled` TPCs are the fused-off ones, a
+ * `simplified` choice since which TPCs are off varies per chip. `instance` of
+ * a tile is `base` plus its index. At the GPC level the SMs are clickable.
+ */
+function smTiles(gpc: Placement, variant: HwNode, k: number, base: number, enterable: boolean): Placement[] {
+  const { sm, tpc, perTpc, tpcs, cellW, cellD, size } = smGrid(variant, k);
+  const y = gpc.position[1] + gpc.size[1] / 2 + SM_HEIGHT * k / 2;
+  return range(tpcs * perTpc).map((n) => {
+    const t = Math.floor(n / perTpc);
     const column = t % TPC_COLUMNS;
-    const row = Math.floor(t / TPC_COLUMNS) * perTpc + (k % perTpc);
-    const x = gpc.position[0] - gpc.size[0] / 2 + SM_INSET + (column + 0.5) * cellW;
-    const z = gpc.position[2] - gpc.size[2] / 2 + SM_INSET + (row + 0.5) * cellD;
-    return part('sm', sm.id, gpc.instance * perGpc + k, [x, y, z], size, t < enabledInstances(tpc));
+    const row = Math.floor(t / TPC_COLUMNS) * perTpc + (n % perTpc);
+    const x = gpc.position[0] - gpc.size[0] / 2 + SM_INSET * k + (column + 0.5) * cellW;
+    const z = gpc.position[2] - gpc.size[2] / 2 + SM_INSET * k + (row + 0.5) * cellD;
+    const on = t < enabledInstances(tpc);
+    return part('sm', sm.id, base + n, [x, y, z], size, on, enterable && on);
   });
 }
 
@@ -205,9 +239,10 @@ export function layoutDie(die: HwNode): Placement[] {
       const row = Math.floor(slot / GPCS_PER_ROW);
       const x = (column - (GPCS_PER_ROW - 1) / 2) * 0.8;
       const z = row === 0 ? -1.2 : 1.2;
-      const gpc = part('gpc', variant.id, i, [x, GPC[1] / 2, z], GPC);
+      const gpc = part('gpc', variant.id, i, [x, GPC[1] / 2, z], GPC, true, true);
       out.push(gpc);
-      sms.push(...smTiles(gpc, variant));
+      const grid = smGrid(variant, 1);
+      sms.push(...smTiles(gpc, variant, 1, i * grid.tpcs * grid.perTpc, false));
       slot++;
     }
   }
@@ -227,6 +262,151 @@ export function layoutDie(die: HwNode): Placement[] {
     const row = i % perSide;
     const z = (row - (perSide - 1) / 2) * 0.6;
     out.push(part('memory-controller', controllers.id, i, [side * 1.85, 0.06, z], [0.2, 0.12, 0.45], i < enabled));
+  }
+  return out;
+}
+
+/** The GPC level's plate is the die level's GPC tile scaled up to the common plate width. */
+const GPC_K = PLATE_WIDTH / GPC[0];
+const GPC_PLATE: Vec3 = [GPC[0] * GPC_K, GPC[1] * GPC_K, GPC[2] * GPC_K];
+/** SM and sub-partition plates are thin slabs; only their top surface and footprint matter. */
+const SLAB = 0.3;
+
+/**
+ * One GPC, in its own frame: its TPCs as slabs, two SMs on each. The SMs
+ * (the enabled ones) are what a click enters, and the TPC is the physical pair
+ * the SMs share (the tree has the TPC level; navigation skips it).
+ */
+export function layoutGpc(variant: HwNode): Placement[] {
+  const grid = smGrid(variant, GPC_K);
+  const plate = part('gpc', variant.id, 0, [0, -GPC_PLATE[1] / 2, 0], GPC_PLATE);
+  const slabHeight = SM_HEIGHT * GPC_K * 0.5;
+  const slabs = range(grid.tpcs).map((t) => {
+    const column = t % TPC_COLUMNS;
+    const row = Math.floor(t / TPC_COLUMNS) * grid.perTpc + (grid.perTpc - 1) / 2;
+    const x = -GPC_PLATE[0] / 2 + SM_INSET * GPC_K + (column + 0.5) * grid.cellW;
+    const z = -GPC_PLATE[2] / 2 + SM_INSET * GPC_K + (row + 0.5) * grid.cellD;
+    const rim = SM_GAP * GPC_K * 0.3;
+    return part('tpc', grid.tpc.id, t, [x, slabHeight / 2, z],
+      [grid.cellW - rim, slabHeight, grid.cellD * grid.perTpc - rim], t < enabledInstances(grid.tpc));
+  });
+  return [plate, ...slabs, ...smTiles(plate, variant, GPC_K, 0, true)];
+}
+
+const LEVEL_INSET = 0.15;
+const LEVEL_GAP = 0.1;
+const SM_SIDE_COLUMN = 1;
+const SUBPARTITION_COLUMNS = 2;
+
+/** The SM's plate and the sub-partition tile on it, from the SM tile at the GPC level. */
+function smDims(variant: HwNode) {
+  const tile = smGrid(variant, 1).size;
+  const plate: Vec3 = [PLATE_WIDTH, SLAB, (PLATE_WIDTH * tile[2]) / tile[0]];
+  const leftW = PLATE_WIDTH - 2 * LEVEL_INSET - LEVEL_GAP - SM_SIDE_COLUMN;
+  const sub: Vec3 = [
+    (leftW - LEVEL_GAP) / SUBPARTITION_COLUMNS,
+    0.35,
+    (plate[2] - 2 * LEVEL_INSET - LEVEL_GAP) / 2,
+  ];
+  return { plate, sub };
+}
+
+/** The unit under `parent` whose id ends in `/name`. */
+function unit(parent: HwNode, name: string): HwNode {
+  const found = parent.children.find((c) => c.id.endsWith(`/${name}`));
+  if (!found) throw new Error(`${parent.id} has no ${name}`);
+  return found;
+}
+
+/**
+ * One SM, in its own frame: its sub-partitions in a 2 × 2 block on the left,
+ * and on the right the L1 / shared memory and the TMA, which belong to the SM
+ * and not to any one sub-partition.
+ */
+export function layoutSm(variant: HwNode, sm: HwNode): Placement[] {
+  const { plate, sub } = smDims(variant);
+  const subpartition = sm.children.find((c) => c.level === 'subpartition');
+  if (!subpartition) throw new Error(`${sm.id} has no sub-partition`);
+  const out: Placement[] = [part('sm', sm.id, 0, [0, -SLAB / 2, 0], plate)];
+  const left = -plate[0] / 2 + LEVEL_INSET;
+  const back = -plate[2] / 2 + LEVEL_INSET;
+  for (const i of range(instances(subpartition))) {
+    const c = i % SUBPARTITION_COLUMNS;
+    const r = Math.floor(i / SUBPARTITION_COLUMNS);
+    out.push(part('subpartition', subpartition.id, i,
+      [left + (c + 0.5) * sub[0] + c * LEVEL_GAP, sub[1] / 2, back + (r + 0.5) * sub[2] + r * LEVEL_GAP],
+      sub, true, true));
+  }
+  const sideX = plate[0] / 2 - LEVEL_INSET - SM_SIDE_COLUMN / 2;
+  const sideDepth = plate[2] - 2 * LEVEL_INSET;
+  const l1Depth = (sideDepth - LEVEL_GAP) * 0.68;
+  const tmaDepth = sideDepth - LEVEL_GAP - l1Depth;
+  out.push(part('l1-shared', unit(sm, 'l1-shared').id, 0, [sideX, 0.15, back + l1Depth / 2],
+    [SM_SIDE_COLUMN, 0.3, l1Depth]));
+  out.push(part('tma', unit(sm, 'tma').id, 0, [sideX, 0.15, back + l1Depth + LEVEL_GAP + tmaDepth / 2],
+    [SM_SIDE_COLUMN, 0.3, tmaDepth]));
+  return out;
+}
+
+const CORE_COLUMNS = 8;
+const CORE_HEIGHT = 0.12;
+const CORE_FILL = 0.78;
+
+/** The sub-partition's plate: the sub-partition tile of the SM level, scaled to the plate width. */
+function subPlate(variant: HwNode): Vec3 {
+  const { sub } = smDims(variant);
+  return [PLATE_WIDTH, SLAB, (PLATE_WIDTH * sub[2]) / sub[0]];
+}
+
+/**
+ * One sub-partition, in its own frame: the warp scheduler (and SFU), the
+ * register file and the tensor core as blocks, and below them the CUDA cores
+ * as grids, one square per core with the tree's counts. The warp itself is
+ * not here: it is a group of 32 threads, not a block of silicon (brief §4.1).
+ */
+export function layoutSubpartition(variant: HwNode, sub: HwNode): Placement[] {
+  const plate = subPlate(variant);
+  const out: Placement[] = [part('subpartition', sub.id, 0, [0, -SLAB / 2, 0], plate)];
+  const usableW = plate[0] - 2 * LEVEL_INSET;
+  const x0 = -plate[0] / 2 + LEVEL_INSET;
+  const z0 = -plate[2] / 2 + LEVEL_INSET;
+  const block = (kind: PartKind, name: string, x: number, z: number, w: number, d: number, h: number) => {
+    const node = unit(sub, name);
+    out.push(part(kind, node.id, 0, [x0 + x + w / 2, h / 2, z0 + z + d / 2], [w, h, d]));
+  };
+  const bandA = 0.5;
+  const bandB = 1.1;
+  const sfuW = 1.2;
+  block('warp-scheduler', 'warp-scheduler', 0, 0, usableW - sfuW - LEVEL_GAP, bandA, 0.25);
+  block('sfu', 'sfu', usableW - sfuW, 0, sfuW, bandA, 0.25);
+  const bandBZ = bandA + LEVEL_GAP;
+  const regW = 1.5;
+  block('register-file', 'register-file', 0, bandBZ, regW, bandB, 0.3);
+  block('tensor-core', 'tensor-core', regW + LEVEL_GAP, bandBZ, usableW - regW - LEVEL_GAP, bandB, 0.4);
+
+  const coresZ = bandBZ + bandB + LEVEL_GAP;
+  const coresD = plate[2] - 2 * LEVEL_INSET - coresZ;
+  const half = (usableW - LEVEL_GAP) / 2;
+  const cores = (kind: PartKind, name: string, x: number, z: number, rowPitch: number) => {
+    const node = unit(sub, name);
+    const n = instances(node);
+    const pitchX = half / CORE_COLUMNS;
+    const size: Vec3 = [pitchX * CORE_FILL, CORE_HEIGHT, rowPitch * CORE_FILL];
+    for (const i of range(n)) {
+      const c = i % CORE_COLUMNS;
+      const r = Math.floor(i / CORE_COLUMNS);
+      out.push(part(kind, node.id, i,
+        [x0 + x + (c + 0.5) * pitchX, CORE_HEIGHT / 2, z0 + z + (r + 0.5) * rowPitch], size));
+    }
+    return Math.ceil(n / CORE_COLUMNS);
+  };
+  const fp32 = unit(sub, 'fp32-core');
+  cores('fp32-core', 'fp32-core', 0, coresZ, coresD / Math.ceil(instances(fp32) / CORE_COLUMNS));
+  const rightRows = ['int32-core', 'fp64-core', 'ld-st'].reduce((n, name) => n + Math.ceil(instances(unit(sub, name)) / CORE_COLUMNS), 0);
+  const rowPitch = coresD / rightRows;
+  let z = coresZ;
+  for (const [kind, name] of [['int32-core', 'int32-core'], ['fp64-core', 'fp64-core'], ['ld-st', 'ld-st']] as const) {
+    z += cores(kind, name, half + LEVEL_GAP, z, rowPitch) * rowPitch;
   }
   return out;
 }

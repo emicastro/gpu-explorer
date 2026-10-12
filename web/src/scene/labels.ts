@@ -37,6 +37,18 @@ const SPECS: Partial<Record<PartKind, LabelSpec>> = {
   l2: { name: 'L2 cache', counted: false, anchor: 'first-top', stop: 1 },
   'memory-controller': { name: 'Memory controllers', counted: true, anchor: 'front-most-top', stop: 0, hint: '· to HBM' },
   gigathread: { name: 'GigaThread engine', counted: false, anchor: 'first-top', stop: null },
+  tpc: { name: 'TPC', counted: true, anchor: 'last-front', stop: null, hint: '· 2 SMs each' },
+  subpartition: { name: 'Sub-partition', counted: true, anchor: 'first-top', stop: null },
+  'l1-shared': { name: 'L1 / shared memory', counted: false, anchor: 'first-top', stop: null },
+  tma: { name: 'TMA', counted: false, anchor: 'first-top', stop: null },
+  'warp-scheduler': { name: 'Warp scheduler', counted: false, anchor: 'first-top', stop: null },
+  'register-file': { name: 'Register file', counted: false, anchor: 'first-top', stop: null },
+  'tensor-core': { name: 'Tensor core', counted: false, anchor: 'first-top', stop: null },
+  'fp32-core': { name: 'FP32 cores', counted: true, anchor: 'first-top', stop: null },
+  'int32-core': { name: 'INT32 cores', counted: true, anchor: 'first-top', stop: null },
+  'fp64-core': { name: 'FP64 cores', counted: true, anchor: 'first-top', stop: null },
+  'ld-st': { name: 'Load/store units', counted: true, anchor: 'first-top', stop: null },
+  sfu: { name: 'SFU', counted: false, anchor: 'first-top', stop: null },
 };
 
 /** `×132 (+12 off)`, or `×8` when all are enabled. */

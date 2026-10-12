@@ -74,7 +74,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 ## 5. 3D: niveles restantes
 
-- [ ] **5.1 GPC, SM y sub-partición.** Layouts y navegación de los tres niveles; SMs deshabilitados en gris; lo físico se distingue de lo lógico (warps como abstracción, brief §4.1). Tests de cantidades; un e2e baja hasta la sub-partición y vuelve con Escape verificando las migas (R7 completo). Los tres niveles usan los materiales y la regla del detalle de 4.5 (ADR 0017). Va después de 4.5. Review: el usuario aprueba capturas de los tres niveles. (R7, R8, R21; §6.2, §6.3)
+- [x] **5.1 GPC, SM y sub-partición.** ([ADR 0019](adr/0019-nested-level-frames-and-instance-picks.md).) Layouts y navegación de los tres niveles; SMs deshabilitados en gris; lo físico se distingue de lo lógico (warps como abstracción, brief §4.1). Tests de cantidades; un e2e baja hasta la sub-partición y vuelve con Escape verificando las migas (R7 completo). Los tres niveles usan los materiales y la regla del detalle de 4.5 (ADR 0017). Va después de 4.5. Review: el usuario aprueba capturas de los tres niveles. (R7, R8, R21; §6.2, §6.3)
   Check: `cd web && pnpm test layout && pnpm e2e navigation`
 - [ ] **5.2 Panel de componente.** El panel muestra la prosa (con un stub de contenido hasta 8.1), las `specs` y "qué hace el LLM acá" según el kernel actual. Un e2e abre el panel de un SM. (R9; §6.4)
   Check: `cd web && pnpm test panel && pnpm e2e panel`

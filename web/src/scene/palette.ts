@@ -14,6 +14,18 @@ export const PART_KINDS = [
   'l2',
   'memory-controller',
   'gigathread',
+  'tpc',
+  'subpartition',
+  'l1-shared',
+  'tma',
+  'warp-scheduler',
+  'register-file',
+  'tensor-core',
+  'fp32-core',
+  'int32-core',
+  'fp64-core',
+  'ld-st',
+  'sfu',
 ] as const;
 
 export type PartKind = (typeof PART_KINDS)[number];
@@ -30,6 +42,18 @@ export const PART_COLORS: Record<PartKind, string> = {
   l2: '#9b6bdf',
   'memory-controller': '#3fb58a',
   gigathread: '#e0607a',
+  tpc: '#233f73',
+  subpartition: '#3a6bc4',
+  'l1-shared': '#7f8ce8',
+  tma: '#d9d05a',
+  'warp-scheduler': '#ef6f6f',
+  'register-file': '#2fa7b8',
+  'tensor-core': '#76d672',
+  'fp32-core': '#5aa0e8',
+  'int32-core': '#a5b8e8',
+  'fp64-core': '#b58ae8',
+  'ld-st': '#e8a15a',
+  sfu: '#e86fb0',
 };
 
 /** What a byte in the flow is; particles take this color (task 4.4). */

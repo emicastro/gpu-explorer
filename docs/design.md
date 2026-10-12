@@ -231,6 +231,7 @@ Sigue cómo vLLM v0.31.0 dimensiona el KV cache al arrancar (`gpu_worker.py`, `d
   1. la cámara vuela hacia él (tween de posición y target, ~600 ms);
   2. los hermanos se desvanecen;
   3. se monta el nivel hijo.
+- Niveles bajo el die ([ADR 0019](adr/0019-nested-level-frames-and-instance-picks.md)): `NavState` suma `picks` (la instancia elegida en cada nivel, misma longitud que `path`) y cada nivel vive en un marco propio (`scene/frames.ts`): su placa mide 4.2 de ancho y el marco la pone sobre la baldosa de la que se entró. Las poses de cámara están en unidades locales de cada nivel; los planos near y far siguen la distancia de la cámara. TPC no es un nivel de navegación: el GPC los muestra como losas bajo cada par de SMs. En el SM y en la sub-partición, una nota aparte dice qué es físico y qué es lógico (el warp).
 - Migas de pan en HTML. `Escape` y `Backspace` vuelven un nivel; `Tab` recorre los componentes clickeables.
 
 ### 6.3 Geometría (R8, R19)

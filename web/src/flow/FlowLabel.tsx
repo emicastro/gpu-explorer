@@ -24,7 +24,7 @@ function Bytes({ q, testId }: { q: Quantity; testId?: string }) {
 /** What the particles on the die stand for, with the exact bytes of the plan (R11). */
 export function FlowLabel() {
   const plan = useStore((s) => s.plan);
-  const atDie = useStore((s) => s.path.length >= 1 && s.from === null);
+  const atDie = useStore((s) => s.path.length === 1 && s.from === null);
   const leg = useFlowStage((s) => s.leg);
   const kernel = plan && atDie ? findKernel(plan, FLOW_OP) : null;
   if (!kernel) return null;

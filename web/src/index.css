@@ -48,6 +48,18 @@ body,
   cursor: default;
 }
 
+.level-note {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgb(18 21 30 / 85%);
+  font: 13px system-ui, sans-serif;
+  color: #c9d1e0;
+}
+
 .flow-label {
   position: fixed;
   top: 12px;

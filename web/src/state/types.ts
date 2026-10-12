@@ -59,8 +59,8 @@ export interface PlaybackSlice {
 }
 
 export interface NavigationSlice extends NavState {
-  /** Goes down into the child `id`. Ignored on the path already or at the deepest level. */
-  enter: (id: string) => void;
+  /** Goes down into instance `instance` of the child `id`. Ignored on the path already or at the deepest level. */
+  enter: (id: string, instance?: number) => void;
   /** Goes up one level; a no-op at the package. */
   back: () => void;
   /** Jumps to a prefix of the path (a breadcrumb click). */

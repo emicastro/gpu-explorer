@@ -1,12 +1,15 @@
 import { Environment, Lightformer, OrbitControls, PerformanceMonitor } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Group, Vector3 } from 'three';
+import { PerspectiveCamera, type Group, type Vector3 } from 'three';
 import {
+  clipPlanes,
+  setClipPlanes,
   ease,
   lerp,
   lerpPose,
-  poseForDepth,
+  OVERVIEW_POSE,
+  poseForLevel,
   siblingRestOpacity,
   TRANSITION_SECONDS,
   type Pose,
@@ -16,6 +19,7 @@ import type { HwNode } from '../core/index.ts';
 import { FLOW_OP, findKernel } from '../flow/flow.ts';
 import { Flow } from './Flow.tsx';
 import { Labels } from './Labels.tsx';
+import { levelContent, levelFrame } from './frames.ts';
 import { DIE_FRAME, layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
 import { createMaterials, type MaterialSet } from './materials.ts';
 import { LIGHT_COLORS, SCENE_BACKGROUND } from './palette.ts';
@@ -52,7 +56,9 @@ function Level({ hardware }: { hardware: HwNode }) {
   const siblings = useRef<Group>(null);
   const enter = useStore((s) => s.enter);
   const path = useStore((s) => s.path);
-  const flying = useStore((s) => s.from !== null);
+  const picks = useStore((s) => s.picks);
+  const from = useStore((s) => s.from);
+  const flying = from !== null;
   const plan = useStore((s) => s.plan);
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as Orbit | null;
@@ -64,7 +70,7 @@ function Level({ hardware }: { hardware: HwNode }) {
   const solidMaterials = useMaterials(false);
 
   useFrame((_, delta) => {
-    const { path, settle } = useStore.getState();
+    const { path, picks, settle } = useStore.getState();
     if (path !== lastPath.current) {
       lastPath.current = path;
       const target = controls?.target;
@@ -72,9 +78,9 @@ function Level({ hardware }: { hardware: HwNode }) {
         elapsed: 0,
         fromPose: {
           position: [camera.position.x, camera.position.y, camera.position.z],
-          target: target ? [target.x, target.y, target.z] : poseForDepth(0).target,
+          target: target ? [target.x, target.y, target.z] : OVERVIEW_POSE.target,
         },
-        toPose: poseForDepth(path.length),
+        toPose: poseForLevel(path.length, levelFrame(hardware, path, picks)),
         fromFade: fade.current,
         toFade: siblingRestOpacity(path.length),
       };
@@ -95,6 +101,14 @@ function Level({ hardware }: { hardware: HwNode }) {
       }
     }
 
+    // Four nested frames span five orders of magnitude: the clip planes follow the camera.
+    if (camera instanceof PerspectiveCamera) {
+      const t = controls?.target;
+      const dist = t ? camera.position.distanceTo(t) : camera.position.length();
+      const { near, far } = clipPlanes(dist);
+      setClipPlanes(camera, near, far);
+    }
+
     const group = siblings.current;
     if (group) group.visible = fade.current > 0.001;
     fadingMaterials.setOpacity(fade.current);
@@ -102,8 +116,20 @@ function Level({ hardware }: { hardware: HwNode }) {
   // The package stays until the flight lands; the die mounts on arrival (design §6.2).
   const packageParts = useMemo(() => layoutPackage(nodeAtLevel(hardware, 'package')), [hardware]);
   const dieParts = useMemo(() => layoutDie(nodeAtLevel(hardware, 'die')), [hardware]);
-  const showPackage = path.length === 0 || flying;
-  const showDie = path.length >= 1 && !flying;
+  // While flying, the shallower of the two ends stays on screen: the camera flies
+  // toward (or away from) a tile of it. The deeper level mounts on landing.
+  const depth = from ? Math.min(path.length, from.length) : path.length;
+  const shownPath = path.slice(0, depth);
+  const shownPicks = picks.slice(0, depth);
+  // The slices are new arrays each render; their content is what matters.
+  const shownKey = `${shownPath.join('/')}@${shownPicks.join(',')}`;
+  const deep = useMemo(
+    () => (depth >= 2 ? levelContent(hardware, shownPath, shownPicks) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hardware, depth, shownKey],
+  );
+  const showPackage = depth === 0;
+  const showDie = depth === 1;
   const flowKernel = plan ? findKernel(plan, FLOW_OP) : null;
   return (
     <>
@@ -129,9 +155,23 @@ function Level({ hardware }: { hardware: HwNode }) {
           {flowKernel && <Flow kernel={flowKernel} dieParts={dieParts} />}
         </group>
       )}
+      {deep && (
+        <group position={[...deep.frame.position]} scale={deep.frame.scale}>
+          <Parts placements={deep.placements} materials={solidMaterials} onEnter={enter} />
+        </group>
+      )}
       {/* Labels stay mounted and toggle: their DOM overlay outlives the levels' meshes. */}
-      <Labels placements={packageParts} show={path.length === 0 && !flying} />
-      <Labels placements={dieParts} own="die" show={showDie} frame={DIE_FRAME} />
+      <Labels placements={packageParts} show={showPackage && !flying} />
+      <Labels placements={dieParts} own="die" show={showDie && !flying} frame={DIE_FRAME} />
+      {deep && (
+        <Labels
+          key={shownKey}
+          placements={deep.placements}
+          own={deep.own}
+          show={!flying}
+          frame={deep.frame}
+        />
+      )}
     </>
   );
 }
@@ -163,11 +203,11 @@ function RenderInfoProbe() {
 const MAX_DPR = 2;
 
 export function Scene({ hardware }: { hardware: HwNode }) {
-  const start = poseForDepth(0);
+  const start = OVERVIEW_POSE;
   const top = Math.min(MAX_DPR, window.devicePixelRatio);
   const [dpr, setDpr] = useState(top);
   return (
-    <Canvas camera={{ position: [...start.position], fov: 50 }} dpr={dpr}>
+    <Canvas camera={{ position: [...start.position], fov: 50, near: clipPlanes(6.2).near, far: clipPlanes(6.2).far }} dpr={dpr}>
       <PerformanceMonitor
         onIncline={() => { setDpr(top); }}
         onDecline={() => { setDpr(1); }}

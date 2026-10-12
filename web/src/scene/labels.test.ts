@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { hardware, initCoreSync, type HwNode } from '../core/index.ts';
 import { FLOW_STAGES } from '../flow/flow.ts';
 import { levelLabels, type SceneLabel } from './labels.ts';
-import { layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
+import { findNode, layoutDie, layoutGpc, layoutPackage, layoutSm, layoutSubpartition, nodeAtLevel } from './layout.ts';
 
 let root: HwNode;
 
@@ -32,7 +32,7 @@ describe('die labels', () => {
 
   it('carry the tree\'s counts', () => {
     expect(byKind(labels(), 'sm')?.text).toBe('SM ×132 (+12 off)');
-    expect(byKind(labels(), 'gpc')?.text).toBe('GPC ×8');
+    expect(byKind(labels(), 'gpc')?.text).toBe('GPC ×8 · click to enter');
     expect(byKind(labels(), 'memory-controller')?.text).toBe('Memory controllers ×10 (+2 off) · to HBM');
     expect(byKind(labels(), 'l2')?.text).toBe('L2 cache');
     expect(byKind(labels(), 'gigathread')?.text).toBe('GigaThread engine');
@@ -61,5 +61,32 @@ describe('die labels', () => {
   it('do not stack two labels on one spot', () => {
     const spots = labels().map((l) => l.anchor.map((c) => c.toFixed(2)).join(','));
     expect(new Set(spots).size).toBe(spots.length);
+  });
+});
+
+describe('labels below the die', () => {
+  const g = 'gpc-8tpc';
+  it('GPC level counts TPCs and SMs from the tree, and says the SMs can be entered', () => {
+    const labels = levelLabels(layoutGpc(findNode(root, g)), 'gpc');
+    expect(byKind(labels, 'tpc')?.text).toBe('TPC ×8 (+1 off) · 2 SMs each');
+    expect(byKind(labels, 'sm')?.text).toBe('SM ×16 (+2 off) · click to enter');
+    expect(byKind(labels, 'gpc')).toBeUndefined();
+  });
+
+  it('SM level names the sub-partitions and what the SM shares', () => {
+    const labels = levelLabels(layoutSm(findNode(root, g), findNode(root, `${g}/tpc/sm`)), 'sm');
+    expect(byKind(labels, 'subpartition')?.text).toBe('Sub-partition ×4 · click to enter');
+    expect(byKind(labels, 'l1-shared')?.text).toBe('L1 / shared memory');
+    expect(byKind(labels, 'tma')?.text).toBe('TMA');
+  });
+
+  it('sub-partition level counts the cores', () => {
+    const sub = findNode(root, `${g}/tpc/sm/subpartition`);
+    const labels = levelLabels(layoutSubpartition(findNode(root, g), sub), 'subpartition');
+    expect(byKind(labels, 'fp32-core')?.text).toBe('FP32 cores ×32');
+    expect(byKind(labels, 'int32-core')?.text).toBe('INT32 cores ×16');
+    expect(byKind(labels, 'fp64-core')?.text).toBe('FP64 cores ×16');
+    expect(byKind(labels, 'ld-st')?.text).toBe('Load/store units ×8');
+    expect(byKind(labels, 'tensor-core')?.text).toBe('Tensor core');
   });
 });

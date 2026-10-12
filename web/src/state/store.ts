@@ -84,13 +84,13 @@ const playbackSlice: Slice<PlaybackSlice> = (set) => ({
 
 const navigationSlice: Slice<NavigationSlice> = (set, get) => {
   const send = (event: NavEvent) => {
-    const { path, from } = get();
-    const next = navReduce({ path, from }, event);
-    if (next.path !== path || next.from !== from) set(next);
+    const { path, picks, from } = get();
+    const next = navReduce({ path, picks, from }, event);
+    if (next.path !== path || next.picks !== picks || next.from !== from) set(next);
   };
   return {
     ...INITIAL_NAV,
-    enter: (id) => { send({ type: 'enter', id }); },
+    enter: (id, instance = 0) => { send({ type: 'enter', id, instance }); },
     back: () => { send({ type: 'back' }); },
     setPath: (path) => { send({ type: 'goto', path }); },
     settle: () => { send({ type: 'settle' }); },

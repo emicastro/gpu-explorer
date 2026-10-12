@@ -11,18 +11,57 @@ export interface Pose {
 /** Flight time between levels, in seconds (design §6.2: ~600 ms). */
 export const TRANSITION_SECONDS = 0.6;
 
-const POSES: readonly Pose[] = [
-  { position: [3.6, 3.6, 3.6], target: [0, 0, 0] },
-  // The die level sits on the package's die (layout.ts `DIE_FRAME`: scale 2/7, top at 0.25).
-  { position: [0, 1.22, 0.97], target: [0, 0.25, 0] },
-  { position: [0.5, 0.9, 0.9], target: [0, 0.3, 0] },
-  { position: [0.3, 0.6, 0.6], target: [0, 0.3, 0] },
-  { position: [0.2, 0.4, 0.4], target: [0, 0.3, 0] },
+/** The package seen whole: the only pose in world units. */
+export const OVERVIEW_POSE: Pose = { position: [3.6, 3.6, 3.6], target: [0, 0, 0] };
+
+/**
+ * The resting camera of each level below the package, in the level's own
+ * units (ADR 0019): looking at the center of its plate from the front and
+ * above. Index 0 is the die; the plates differ in depth, so the farther ones
+ * stand back a little.
+ */
+const LOCAL_VIEWS: readonly Pose[] = [
+  { position: [0, 3.4, 3.4], target: [0, 0, 0] },
+  { position: [0, 4.6, 4.6], target: [0, 0, 0] },
+  { position: [0, 3.2, 3.2], target: [0, 0, 0] },
+  { position: [0, 3.8, 3.8], target: [0, 0, 0] },
 ];
 
-/** The resting camera for a level; deeper than the last pose reuses the last. */
-export function poseForDepth(depth: number): Pose {
-  return POSES[Math.min(depth, POSES.length - 1)] ?? POSES[0] as Pose;
+export interface Frame {
+  scale: number;
+  position: Vec3;
+}
+
+/**
+ * The resting camera for the level at `depth` whose frame in the world is
+ * `frame`. The package (depth 0) ignores the frame.
+ */
+export function poseForLevel(depth: number, frame: Frame): Pose {
+  if (depth <= 0) return OVERVIEW_POSE;
+  const local = LOCAL_VIEWS[Math.min(depth, LOCAL_VIEWS.length) - 1] ?? OVERVIEW_POSE;
+  const place = (v: Vec3): Vec3 => [
+    frame.position[0] + frame.scale * v[0],
+    frame.position[1] + frame.scale * v[1],
+    frame.position[2] + frame.scale * v[2],
+  ];
+  return { position: place(local.position), target: place(local.target) };
+}
+
+/** Near and far planes that suit a camera `distance` from what it looks at. */
+export function clipPlanes(distance: number): { near: number; far: number } {
+  return { near: distance * 0.02, far: distance * 200 };
+}
+
+/** Sets the planes when they moved by more than 0.1%, and only then rebuilds the projection. */
+export function setClipPlanes(
+  camera: { near: number; far: number; updateProjectionMatrix: () => void },
+  near: number,
+  far: number,
+): void {
+  if (Math.abs(camera.near - near) <= near * 1e-3) return;
+  camera.near = near;
+  camera.far = far;
+  camera.updateProjectionMatrix();
 }
 
 /** Exact at both ends (`a + (b - a) * t` is not at t = 1). */

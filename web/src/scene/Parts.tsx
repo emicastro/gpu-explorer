@@ -8,7 +8,7 @@ import { partColor } from './palette.ts';
 interface PartsProps {
   placements: Placement[];
   materials: MaterialSet;
-  onEnter: (id: string) => void;
+  onEnter: (id: string, instance: number) => void;
 }
 
 /** Parts a click can't act on skip the raycast entirely (ADR 0017). */
@@ -17,9 +17,11 @@ const noRaycast = () => undefined;
 /**
  * A kind that repeats a lot: one draw call, one color per instance. The kind's
  * parts share one size, so the geometry is built at that size and the
- * instances only move. Instanced parts are detail: never clickable.
+ * instances only move. Instanced parts are detail, and skip the raycast,
+ * unless some of them can be entered (the SMs of a GPC): then the instance
+ * under the pointer is the one entered.
  */
-function InstancedParts({ list, materials }: { list: Placement[]; materials: MaterialSet }) {
+function InstancedParts({ list, materials, onEnter }: PartsProps & { list: Placement[] }) {
   const mesh = useRef<InstancedMesh>(null);
   const first = list[0];
   useLayoutEffect(() => {
@@ -38,13 +40,23 @@ function InstancedParts({ list, materials }: { list: Placement[]; materials: Mat
     m.computeBoundingSphere();
   }, [list]);
   if (!first) return null;
+  const events = list.some((p) => p.enterId !== null)
+    ? {
+        onClick: (e: { stopPropagation: () => void; instanceId?: number }) => {
+          const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
+          if (!hit?.enterId) return;
+          e.stopPropagation();
+          onEnter(hit.enterId, hit.instance);
+        },
+      }
+    : { raycast: noRaycast };
   // Geometry and material are shared: the mesh must not dispose them on unmount.
   return (
     <instancedMesh
       ref={mesh}
       args={[roundedBox(first.size), materials.instanced(first.kind), list.length]}
-      raycast={noRaycast}
       dispose={null}
+      {...events}
     />
   );
 }
@@ -55,7 +67,7 @@ export function Parts({ placements, materials, onEnter }: PartsProps) {
   return (
     <>
       {instanced.map((list) => (
-        <InstancedParts key={list[0]?.kind} list={list} materials={materials} />
+        <InstancedParts key={list[0]?.kind} list={list} placements={placements} materials={materials} onEnter={onEnter} />
       ))}
       {single.map((p) => {
         const { enterId } = p;
@@ -63,7 +75,7 @@ export function Parts({ placements, materials, onEnter }: PartsProps) {
           ? {
               onClick: (e: { stopPropagation: () => void }) => {
                 e.stopPropagation();
-                onEnter(enterId);
+                onEnter(enterId, p.instance);
               },
             }
           : { raycast: noRaycast };

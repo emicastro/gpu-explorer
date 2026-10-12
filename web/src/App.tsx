@@ -1,4 +1,5 @@
 import { FlowLabel } from './flow/FlowLabel.tsx';
+import { LevelNote } from './nav/LevelNote.tsx';
 import { Breadcrumbs } from './nav/Breadcrumbs.tsx';
 import { useNavigationKeys } from './nav/useNavigationKeys.ts';
 import type { HwNode } from './core/index.ts';
@@ -11,6 +12,7 @@ export function App({ hardware }: { hardware: HwNode }) {
       <Scene hardware={hardware} />
       <Breadcrumbs />
       <FlowLabel />
+      <LevelNote />
     </>
   );
 }

@@ -45,6 +45,18 @@ export const KIND_LOOKS: Record<PartKind, KindLook> = {
   l2: { surface: 'block' },
   'memory-controller': { surface: 'block' },
   gigathread: { surface: 'block' },
+  tpc: { surface: 'block' },
+  subpartition: { surface: 'block' },
+  'l1-shared': { surface: 'block' },
+  tma: { surface: 'block' },
+  'warp-scheduler': { surface: 'block' },
+  'register-file': { surface: 'block' },
+  'tensor-core': { surface: 'block' },
+  'fp32-core': { surface: 'block' },
+  'int32-core': { surface: 'block' },
+  'fp64-core': { surface: 'block' },
+  'ld-st': { surface: 'block' },
+  sfu: { surface: 'block' },
 };
 
 /** Disabled parts reflect less of the environment, so they read as off and not just darker. */
