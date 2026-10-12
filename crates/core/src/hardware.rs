@@ -93,7 +93,9 @@ pub struct HwNode {
 }
 
 /// A tensor-core data type with a dense peak.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum TensorPrecision {
     Bf16,
     Fp8,

@@ -13,6 +13,7 @@ use crate::scenario::Scenario;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum OpKind {
     // Once per step, before the layers.
     /// The engine's input bookkeeping: positions, block tables, slot mappings.
@@ -87,7 +88,8 @@ impl OpKind {
 }
 
 /// One op instance in a step: its kind and, for layer ops, its layer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct OpId {
     pub layer: Option<u32>,
     pub kind: OpKind,

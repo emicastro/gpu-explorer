@@ -14,6 +14,8 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Add;
 
+use serde::Serialize;
+
 use crate::error::CoreError;
 use crate::fusion::{FusedStep, Impl, Kernel};
 use crate::hardware::{HwNode, TensorPrecision};
@@ -116,7 +118,9 @@ impl Add for Cost {
 }
 
 /// Which roof limits a kernel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Limit {
     Memory,
     Compute,
@@ -791,7 +795,7 @@ struct SplitKv {
 }
 
 /// How many scales a `[rows, cols]` tensor carries.
-fn scales(g: ScaleGranularity, rows: u64, cols: u64) -> u64 {
+pub(crate) fn scales(g: ScaleGranularity, rows: u64, cols: u64) -> u64 {
     match g {
         ScaleGranularity::Tensor => 1,
         ScaleGranularity::Token => rows,

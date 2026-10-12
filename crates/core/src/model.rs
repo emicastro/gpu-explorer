@@ -22,6 +22,11 @@ pub fn model(id: &str) -> Result<ModelConfig, CoreError> {
     }
 }
 
+/// Every model preset, in the order the UI lists them.
+pub fn models() -> Result<Vec<ModelConfig>, CoreError> {
+    ["qwen3-8b"].into_iter().map(model).collect()
+}
+
 fn parse(name: &str, src: &str) -> Result<ModelConfig, CoreError> {
     let model: ModelConfig =
         serde_json::from_str(src).map_err(|e| CoreError::InvalidData(format!("{name}: {e}")))?;
@@ -31,18 +36,23 @@ fn parse(name: &str, src: &str) -> Result<ModelConfig, CoreError> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct ModelConfig {
     pub id: String,
     pub name: String,
     /// Applies to every value in `config`.
     pub provenance: SourceInfo,
     pub config: HfConfig,
+    /// Read by the core only: the UI picks a weight format, not a scheme.
+    #[serde(skip_serializing)]
+    #[cfg_attr(feature = "ts", ts(skip))]
     pub quantization_variants: QuantizationVariants,
 }
 
 /// Confidence and sources as written in a data file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct SourceInfo {
     pub confidence: Confidence,
     pub sources: Vec<String>,
@@ -54,10 +64,20 @@ impl SourceInfo {
     }
 }
 
+impl From<&Provenance> for SourceInfo {
+    fn from(p: &Provenance) -> Self {
+        SourceInfo {
+            confidence: p.confidence(),
+            sources: p.sources().map(str::to_owned).collect(),
+        }
+    }
+}
+
 /// The upstream `config.json` of a dense Qwen3 model, field for field.
 /// Every upstream field is listed, so a new one fails to load.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct HfConfig {
     pub architectures: Vec<String>,
     pub attention_bias: bool,
@@ -90,6 +110,7 @@ pub struct HfConfig {
 /// The YaRN block the Qwen3 model card adds to extend context (brief D11).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct RopeScaling {
     pub rope_type: String,
     pub factor: f64,
@@ -140,7 +161,9 @@ pub enum ActivationScheme {
 }
 
 /// Element type of the KV cache (brief D8).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum KvDtype {
     Bf16,
     Fp8,

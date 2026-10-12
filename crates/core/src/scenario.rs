@@ -26,6 +26,7 @@ pub fn graph_size(tokens: u64) -> Option<u64> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Phase {
     Prefill,
     Decode,
@@ -34,6 +35,7 @@ pub enum Phase {
 /// Weight format and the GEMM path vLLM runs for it (brief D8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Weights {
     Bf16,
     /// W8A8 with 128×128 weight blocks and 1×128 activation groups.
@@ -51,7 +53,11 @@ impl Weights {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What `evaluate` takes from the UI (brief §6.4). The time mode is not
+/// here: the plan carries both times.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct Scenario {
     pub phase: Phase,
     /// Per request, the KV length attention reads after this step's tokens

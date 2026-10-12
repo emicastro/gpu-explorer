@@ -103,6 +103,7 @@ impl From<OpRef> for String {
 /// The tiling model that computes a kernel's grid (design §4.3).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub enum Impl {
     InductorElementwise,
     CublasBf16,
@@ -195,7 +196,8 @@ pub struct Kernel {
 }
 
 /// The kernels of one layer: `kernels[start..end]` of the step.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(export))]
 pub struct LayerSpan {
     pub layer: u32,
     pub start: usize,

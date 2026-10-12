@@ -1,25 +1,26 @@
 // Store shape (design §6.1, ADR 0004).
-// `Scenario` and `StepPlan` are local stand-ins until the core's generated types land
-// (task 3.2 / ADR 0001); then these aliases become re-exports from ../generated.
+import type { KvDtype } from '../generated/KvDtype.ts';
+import type { Phase } from '../generated/Phase.ts';
+import type { StepPlan } from '../generated/StepPlan.ts';
+import type { Weights } from '../generated/Weights.ts';
 
-export type WeightsScheme = 'bf16' | 'fp8_block' | 'fp8_tensor' | 'fp8_w8a16';
-export type Phase = 'prefill' | 'decode';
-export type KvDtype = 'bf16' | 'fp8';
+export type { StepPlan };
 export type TimeMode = 'didactic' | 'real';
 
-export interface Scenario {
+/**
+ * The knobs the UI shows (design §6.8). The core takes a `Scenario` with one
+ * context per request; `toScenario` (store.ts) expands these into one.
+ */
+export interface Knobs {
   batch: number;
   context: number;
-  weights: WeightsScheme;
+  weights: Weights;
   kv: KvDtype;
   phase: Phase;
 }
 
-/** Opaque until the core exposes the generated `StepPlan`. */
-export type StepPlan = object;
-
 /** Calls the core's `evaluate`. Injected so the store has no hard dependency on WASM. */
-export type Evaluate = (scenario: Scenario) => StepPlan;
+export type Evaluate = (knobs: Knobs) => StepPlan;
 
 export type Selection =
   | { kind: 'kernel'; index: number }
@@ -27,9 +28,9 @@ export type Selection =
   | null;
 
 export interface ScenarioSlice {
-  scenario: Scenario;
+  scenario: Knobs;
   /** Merges the knobs, then re-evaluates the plan synchronously. */
-  setScenario: (patch: Partial<Scenario>) => void;
+  setScenario: (patch: Partial<Knobs>) => void;
 }
 
 export interface PlanSlice {

@@ -14,3 +14,5 @@ crate-type = ["cdylib"]
 gpuviz-core = { path = "../core" }
 # Pinned exactly: wasm-bindgen-cli must match this version (ADR 0003).
 wasm-bindgen = "=0.2.129"
+serde = "1.0"
+serde-wasm-bindgen = "0.6.5"

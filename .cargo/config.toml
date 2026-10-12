@@ -1,3 +1,6 @@
 [env]
 # Where ts-rs writes the TypeScript bindings (ADR 0001).
 TS_RS_EXPORT_DIR = { value = "web/src/generated", relative = true }
+# serde-wasm-bindgen sends u64 as a JS number (json_compatible), so the
+# bindings say `number` too. Every u64 the core emits is below 2^53.
+TS_RS_LARGE_INT = "number"

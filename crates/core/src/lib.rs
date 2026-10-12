@@ -6,14 +6,20 @@
 pub mod error;
 pub mod fusion;
 pub mod hardware;
+pub mod memory;
 pub mod model;
 pub mod ops;
+pub mod plan;
 pub mod quantity;
 pub mod roofline;
 pub mod scenario;
 pub mod tiling;
 pub mod time;
 pub mod units;
+
+pub use hardware::hardware;
+pub use model::{model, models};
+pub use plan::{StepPlan, evaluate};
 
 /// Version of this crate, as declared in `Cargo.toml`.
 pub fn version() -> &'static str {

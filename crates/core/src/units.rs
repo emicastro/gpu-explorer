@@ -136,6 +136,10 @@ real_unit!(
     FlopsPerCycle, FlopsPerCycle
 );
 real_unit!(
+    /// A throughput in tokens per second: the step's tokens over its time.
+    TokensPerSec, TokensPerSec
+);
+real_unit!(
     /// A dimensionless ratio, such as the fraction of a peak a kernel
     /// reaches. It scales a real unit with `*` on its `f64` (ADR 0014).
     Ratio, Ratio

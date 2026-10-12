@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SCENARIO, useStore } from './store.ts';
-import type { Scenario } from './types.ts';
+import { DEFAULT_SCENARIO, toScenario, useStore } from './store.ts';
+import type { Knobs, StepPlan } from './types.ts';
 
 const initial = useStore.getState();
 
@@ -20,7 +20,8 @@ describe('store slices', () => {
   });
 
   it('re-evaluates synchronously on a scenario change and replaces the plan', () => {
-    const evaluate = vi.fn((sc: Scenario) => ({ batch: sc.batch }));
+    // A stand-in plan: the store only stores what the evaluator returns.
+    const evaluate = vi.fn((k: Knobs) => ({ batch: k.batch }) as unknown as StepPlan);
     useStore.getState().setEvaluator(evaluate);
     const first = useStore.getState().plan;
     useStore.getState().setScenario({ batch: 8 });
@@ -60,5 +61,17 @@ describe('store slices', () => {
     t.back();
     useStore.getState().back();
     expect(useStore.getState().path).toEqual([]);
+  });
+
+  it('expands the knobs into one context per request', () => {
+    const knobs: Knobs = { ...DEFAULT_SCENARIO, batch: 3, context: 4096 };
+    expect(toScenario(knobs)).toEqual({
+      phase: 'decode',
+      contexts: [4096, 4096, 4096],
+      newTokens: 1,
+      weights: 'bf16',
+      kv: 'bf16',
+    });
+    expect(toScenario({ ...knobs, phase: 'prefill' }).newTokens).toBe(4096);
   });
 });

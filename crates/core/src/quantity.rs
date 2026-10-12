@@ -40,6 +40,8 @@ pub enum Unit {
     Hertz,
     #[serde(rename = "FLOP/cycle")]
     FlopsPerCycle,
+    #[serde(rename = "tok/s")]
+    TokensPerSec,
     #[serde(rename = "count")]
     Count,
     /// Dimensionless: the SI unit "1".
@@ -207,6 +209,7 @@ mod tests {
         assert_eq!(tag(Unit::Seconds), "s");
         assert_eq!(tag(Unit::FlopsPerSec), "FLOP/s");
         assert_eq!(tag(Unit::FlopsPerByte), "FLOP/B");
+        assert_eq!(tag(Unit::TokensPerSec), "tok/s");
         assert_eq!(tag(Unit::Count), "count");
         assert_eq!(tag(Unit::Ratio), "1");
         let none = Provenance::new(Confidence::Estimated, Vec::<String>::new());

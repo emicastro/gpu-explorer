@@ -74,7 +74,10 @@ pub fn evaluate(hw: &str, model: &str, scenario: &Scenario) -> Result<StepPlan, 
 - `Scenario` y `StepPlan` siguen el brief §6.4 y §6.6, con estos ajustes:
   - `weights: "bf16" | "fp8_block" | "fp8_tensor" | "fp8_w8a16"`.
   - `contexts: Vec<u32>`, uno por request. La UI de v1 los manda iguales (brief D9).
-  - Cada kernel agrega `ops: Vec<OpId>` (las ops lógicas que fusiona), `phaseBreakdown` con los bytes por origen (pesos, KV, activaciones) para la barra de flujo, y `grid.perWave: Vec<u32>` (bloques por onda) para el mapeo a SMs.
+  - Cada kernel agrega `ops: Vec<OpId>` (las ops lógicas que fusiona), `phaseBreakdown` con los bytes leídos y escritos por origen (pesos, KV, activaciones) para la barra de flujo, y `grid.perWave: Vec<u32>` (bloques por onda) para el mapeo a SMs.
+  - También agrega `impl`, la `provenance` de su plantilla de fusión, `bytes.unfused` (para el ahorro por fusión), `precision` (el pico contra el que se mide) y `time.realisticBound` (con pocos SMs activos, el techo del tiempo realista puede no ser el de la cota). El `id` es `k` más el índice de lanzamiento.
+  - Los números de `grid` (`blocks`, `splits`, `slots`, `waves`, `waveEfficiency`, `activeSms`) son `Quantity`, con la procedencia del `Launch`. `tile` es `[m, n, k]` y `perWave` es una lista de números: son formas, no valores que la UI muestre sueltos.
+  - `totals` suma FLOPs, bytes y los dos tiempos, y da `tokensPerSecond` (unidad `tok/s`) para cada uno, con el M real. `roofs` trae los picos BF16 y FP8 y el ancho de banda, derivados del árbol, para la vista de roofline.
   - `layers: Vec<LayerSpan>` indica qué rango de kernels corresponde a cada capa. No es un corte limpio: la suma residual se fusiona con la RMSNorm de la capa siguiente (brief §6.5), así que el rango se define por el kernel que **empieza** la capa.
 - Errores: un enum con mensaje (escenario inválido, batch que no entra en HBM, id inexistente). En la frontera WASM se convierten en `JsError`.
 
@@ -185,16 +188,25 @@ t_real     = max(FLOPs / compute_ef, bytes / bw_ef) + t_overhead
 
 ### 4.5 Memoria (R5)
 
-- `weights` = parámetros × bytes por peso, más las escalas FP8.
-- `kv` = Σ contextos × KV por token (brief §7.1).
-- `free` = capacidad − pesos − KV − reserva de activaciones (`estimated`).
-- `maxBatch` = cuántos requests del contexto actual entran en el espacio libre.
+Sigue cómo vLLM v0.31.0 dimensiona el KV cache al arrancar (`gpu_worker.py`, `determine_available_memory`): una fracción `gpu_memory_utilization` de la capacidad, menos los pesos y lo que no es KV.
+
+- `weights`: las cuatro GEMMs de cada capa en el formato de los pesos, con sus escalas FP32 (bloques de 128×128 o una por tensor), y el resto en BF16 (embeddings, LM head, norms). W8A16 usa el checkpoint por bloques.
+- `kv` = Σ ⌈contexto / 16⌉ · 16 × KV por token (brief §7.1). vLLM asigna el KV en bloques enteros de 16 tokens (`documented`).
+- `headroom` = capacidad × (1 − `gpu_memory_utilization`). Es 0.92 por defecto en v0.31.0 (`documented`).
+- `activations` = la memoria que no es pesos ni KV: el pico de activaciones del perfilado y lo que no es de torch. 2 GiB, `estimated`. La memoria de los CUDA graphs no se resta: vLLM solo la estima con `VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS`, así que sale del `headroom`.
+- Los dos parámetros viven en el bloque `calibration` del archivo de hardware: describen cómo corre el stack en esta GPU ([ADR 0014](adr/0014-hardware-file-wraps-tree-and-calibration.md)).
+- `free` = capacidad − `headroom` − pesos − `activations` − KV, y 0 si no entra. Sin overflow, las cinco partes suman la capacidad.
+- `maxBatch` = cuántos requests del contexto más largo del batch entran después de pesos, `activations` y `headroom`. Con Qwen3-8B en BF16: 12 a 32k, 3 a 128k.
 - Si el escenario no entra, `evaluate` devuelve el plan con `memory.overflow = true`. No es un error: la UI lo muestra en rojo.
 
 ## 5. Frontera WASM
 
 - `crates/wasm` exporta `hardware(id)`, `models()`, `evaluate(hw, model, scenario)`. Recibe y devuelve valores JS vía `serde-wasm-bindgen`.
+  - Serializa con `Serializer::json_compatible()` ([ADR 0015](adr/0015-step-plan-wire-shape.md)): objetos en lugar de `Map`, `null` para `None` y números para `u64`. Por eso ts-rs genera `number` para los enteros grandes (`TS_RS_LARGE_INT` en `.cargo/config.toml`).
+  - `models()` devuelve los `ModelConfig` sin `quantization_variants`: el núcleo los usa, la UI elige un formato de pesos y no un esquema.
+  - `evaluate` elige el perfil de fusión según el hardware (`h100-sxm` → `vllm-0.31.0-h100`).
 - `web/src/core/index.ts` envuelve el módulo y castea a los tipos generados (ADR 0001).
+- El store guarda las perillas (`Knobs`: batch y un contexto). `toScenario` las expande a un `Scenario` con un contexto por request; en prefill, `newTokens` es el contexto entero.
 - `init()` es asíncrono en el navegador. En Vitest, `initSync` lee los bytes del `.wasm` del disco.
 - Test de ida y vuelta: un `Scenario` construido en TS → `evaluate` → el `StepPlan` tiene la forma generada (Vitest).
 

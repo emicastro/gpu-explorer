@@ -764,6 +764,23 @@
         "NVIDIA, \"Getting Started with CUDA Graphs\" (V100): a short kernel takes 2.9 µs to run, 3.8 µs per kernel launched back to back on a stream and 3.4 µs replayed from a graph; no H100 measurement",
         "The graph case plus ~2 µs of host launch that short kernels cannot hide; long prefill kernels hide it, so it matters little there"
       ]
+    },
+    "gpuMemoryUtilization": {
+      "value": 0.92,
+      "unit": "1",
+      "confidence": "documented",
+      "sources": [
+        "vLLM v0.31.0 vllm/config/cache.py: gpu_memory_utilization = 0.92 by default, the fraction of GPU memory the model executor may use; vllm/v1/worker/gpu_worker.py determine_available_memory: KV cache = requested memory − non-KV memory (weights, non-torch allocations and the profile run's peak activations)"
+      ]
+    },
+    "activationMemory": {
+      "value": 2147483648,
+      "unit": "B",
+      "confidence": "estimated",
+      "sources": [
+        "vLLM's non-KV memory beyond the weights: the peak of the profile run (a forward over max_num_batched_tokens dummy tokens; for Qwen3-8B the gate+up output alone is ~0.4 GB per 8192 tokens in BF16) and the sampler's dummy logits (max_num_seqs × 151 936 vocab in fp32), plus cuBLAS workspaces and other non-torch allocations. ~2 GiB is a guess with no H100 log at hand",
+        "CUDA graph memory is not subtracted: vLLM v0.31.0 applies its estimate only with VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS, so the graph pool comes out of the headroom that gpu_memory_utilization leaves"
+      ]
     }
   }
 }

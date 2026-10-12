@@ -1,16 +1,17 @@
 import { create, type StateCreator } from 'zustand';
+import type { Scenario } from '../generated/Scenario.ts';
 import type {
   Evaluate,
+  Knobs,
   NavigationSlice,
   PlanSlice,
   PlaybackSlice,
-  Scenario,
   ScenarioSlice,
   SelectionSlice,
   StoreState,
 } from './types.ts';
 
-export const DEFAULT_SCENARIO: Scenario = {
+export const DEFAULT_SCENARIO: Knobs = {
   batch: 1,
   context: 1024,
   weights: 'bf16',
@@ -18,12 +19,26 @@ export const DEFAULT_SCENARIO: Scenario = {
   phase: 'decode',
 };
 
+/**
+ * The core's scenario for the knobs: `batch` requests of the same context
+ * (brief D9). Decode adds one token per request; prefill, the whole prompt.
+ */
+export function toScenario(knobs: Knobs): Scenario {
+  return {
+    phase: knobs.phase,
+    contexts: Array<number>(knobs.batch).fill(knobs.context),
+    newTokens: knobs.phase === 'decode' ? 1 : knobs.context,
+    weights: knobs.weights,
+    kv: knobs.kv,
+  };
+}
+
 // The evaluator lives outside the state: it is a dependency, not data to render.
 let evaluator: Evaluate | null = null;
 
 type Slice<T> = StateCreator<StoreState, [], [], T>;
 
-function runEvaluate(scenario: Scenario): Pick<PlanSlice, 'plan' | 'planError'> {
+function runEvaluate(scenario: Knobs): Pick<PlanSlice, 'plan' | 'planError'> {
   if (!evaluator) return { plan: null, planError: null };
   try {
     return { plan: evaluator(scenario), planError: null };

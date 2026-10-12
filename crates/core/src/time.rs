@@ -20,9 +20,10 @@ use crate::quantity::{Confidence, Provenance, Quantity};
 use crate::roofline::{Limit, StepRoofline};
 use crate::scenario::{GRAPH_MAX_TOKENS, Phase, Scenario};
 use crate::tiling::{Launch, Sm};
-use crate::units::{Count, Flops, Ratio, Seconds};
+use crate::units::{Bytes, Count, Flops, Ratio, Seconds};
 
-/// The parameters of the realistic time for one GPU and software stack.
+/// How one software stack runs on one GPU: the parameters of the realistic
+/// time and of the memory budget (design §4.4, §4.5).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Calibration {
@@ -38,6 +39,11 @@ pub struct Calibration {
     pub kernel_overhead_graphs: Quantity,
     /// Fixed cost of each kernel launched one by one from the host.
     pub kernel_overhead_eager: Quantity,
+    /// The fraction of HBM the engine may use; the rest is headroom.
+    pub gpu_memory_utilization: Quantity,
+    /// Memory the engine holds besides the weights and the KV cache: peak
+    /// activations and non-torch allocations.
+    pub activation_memory: Quantity,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -131,6 +137,22 @@ impl Calibration {
         }
     }
 
+    pub fn gpu_memory_utilization(&self) -> Result<(Ratio, Provenance), CoreError> {
+        fraction("gpuMemoryUtilization", &self.gpu_memory_utilization)
+    }
+
+    pub fn activation_memory(&self) -> Result<(Bytes, Provenance), CoreError> {
+        let q = &self.activation_memory;
+        match q.get::<Bytes>() {
+            Some(b) if b.0 >= 0.0 => Ok((b, q.provenance())),
+            _ => Err(invalid(format!(
+                "activationMemory must be a non-negative size, got {} {:?}",
+                q.value(),
+                q.unit()
+            ))),
+        }
+    }
+
     /// Every value has the right unit and range and a source.
     pub(crate) fn validate(&self) -> Result<(), CoreError> {
         self.memory_efficiency()?;
@@ -138,11 +160,15 @@ impl Calibration {
         self.compute_efficiency(Flops(1.0))?;
         self.kernel_overhead(true)?;
         self.kernel_overhead(false)?;
+        self.gpu_memory_utilization()?;
+        self.activation_memory()?;
         let mut values = vec![
             ("memoryEfficiency", &self.memory_efficiency),
             ("smsToSaturateHbm", &self.sms_to_saturate_hbm),
             ("kernelOverheadGraphs", &self.kernel_overhead_graphs),
             ("kernelOverheadEager", &self.kernel_overhead_eager),
+            ("gpuMemoryUtilization", &self.gpu_memory_utilization),
+            ("activationMemory", &self.activation_memory),
         ];
         for p in &self.compute_efficiency {
             values.push(("computeEfficiency", &p.flops));
