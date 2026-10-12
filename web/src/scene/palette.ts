@@ -21,14 +21,25 @@ export const PART_COLORS: Record<PartKind, string> = {
   gigathread: '#e0607a',
 };
 
-const BACKGROUND = [0x0b, 0x0d, 0x12] as const;
+/** What a byte in the flow is; particles take this color (task 4.4). */
+export type TrafficClass = 'weights' | 'kv' | 'activations';
+
+export const FLOW_COLORS: Record<TrafficClass, string> = {
+  weights: '#ffd27a',
+  kv: '#ff8a5c',
+  activations: '#7fe3ff',
+};
+
+export const SCENE_BACKGROUND = '#0b0d12';
+
+const channels = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const BACKGROUND = channels(SCENE_BACKGROUND);
 /** How much of a disabled part's color survives (the rest is background). */
 const DISABLED_KEEP = 0.3;
 
 /** Mixes `hex` toward the background; used for disabled parts. */
 function dim(hex: string): string {
-  const channels = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  const mixed = channels.map((c, i) => Math.round((c * DISABLED_KEEP) + (BACKGROUND[i] ?? 0) * (1 - DISABLED_KEEP)));
+  const mixed = channels(hex).map((c, i) => Math.round((c * DISABLED_KEEP) + (BACKGROUND[i] ?? 0) * (1 - DISABLED_KEEP)));
   return `#${mixed.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 

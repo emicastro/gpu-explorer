@@ -261,10 +261,16 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 - `smOccupancy(kernel, wave) -> Set<smIndex>` es una función pura (§4.3).
 - Flujo HBM → L2 → SM → tensor core:
-  - partículas instanciadas por tramo;
+  - partículas instanciadas, un stream por clase de `phaseBreakdown.read` (pesos, KV, activaciones), cada una con su color;
   - cantidad y ancho de flujo en escala logarítmica de los bytes (brief §4.3);
   - etiqueta con el número exacto.
 - Primer hito (brief §9): dos niveles (package y die) y un kernel animado con datos reales del plan.
+- Código en `web/src/flow/`: `flow.ts` (funciones puras: kernel, streams, rutas, posición sobre la ruta, formato) y `FlowLabel.tsx` (etiqueta en el DOM). `scene/Flow.tsx` dibuja las partículas en un solo `InstancedMesh`.
+- **El flujo corre en el nivel die** (ADR 0016).
+  - Rutas: todos los pares (controlador activo, GPC), por la mitad de L2 del lado del controlador. El último tramo es la caída dentro del GPC.
+  - La etiqueta muestra `bytes.hbmRead` y su desglose. En la QKV a batch 1, L2 → SM supera a HBM en menos del 1 %: solo el vector de entrada (8 KB) se lee por CTA.
+- Escala: `logLevel` lleva de 1 KB (0) a 1 GB (1) en 6 décadas. Las partículas van de 4 a 240 y el ancho, de 0,03 a 0,16. La QKV a batch 1 da 189 partículas de pesos (50 MB) y 40 de activaciones (8 KB).
+- El escenario por defecto es decode BF16, batch 1, 8k: es el del hito y el de la lección de split-KV (brief §7.2).
 
 ### 6.7 Rendimiento (R12)
 

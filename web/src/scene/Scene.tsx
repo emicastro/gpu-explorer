@@ -13,7 +13,10 @@ import {
 } from '../nav/camera.ts';
 import { useStore } from '../state/store.ts';
 import type { HwNode } from '../core/index.ts';
+import { FLOW_OP, findKernel } from '../flow/flow.ts';
+import { Flow } from './Flow.tsx';
 import { layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
+import { SCENE_BACKGROUND } from './palette.ts';
 import { Parts } from './Parts.tsx';
 
 /** The part of drei's OrbitControls the rig drives. */
@@ -21,8 +24,6 @@ interface Orbit {
   target: Vector3;
   update: () => void;
 }
-
-export const SCENE_BACKGROUND = '#0b0d12';
 
 interface Flight {
   elapsed: number;
@@ -42,6 +43,7 @@ function Level({ hardware }: { hardware: HwNode }) {
   const enter = useStore((s) => s.enter);
   const path = useStore((s) => s.path);
   const flying = useStore((s) => s.from !== null);
+  const plan = useStore((s) => s.plan);
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as Orbit | null;
   const fade = useRef(1);
@@ -94,6 +96,7 @@ function Level({ hardware }: { hardware: HwNode }) {
   const dieParts = useMemo(() => layoutDie(nodeAtLevel(hardware, 'die')), [hardware]);
   const showPackage = path.length === 0 || flying;
   const showDie = path.length >= 1 && !flying;
+  const flowKernel = plan ? findKernel(plan, FLOW_OP) : null;
   return (
     <>
       {showPackage && (
@@ -105,6 +108,7 @@ function Level({ hardware }: { hardware: HwNode }) {
         </>
       )}
       {showDie && <Parts placements={dieParts} onEnter={enter} />}
+      {showDie && flowKernel && <Flow kernel={flowKernel} dieParts={dieParts} />}
     </>
   );
 }

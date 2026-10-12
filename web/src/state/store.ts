@@ -14,7 +14,8 @@ import type {
 
 export const DEFAULT_SCENARIO: Knobs = {
   batch: 1,
-  context: 1024,
+  // The split-KV lesson's context (brief §7.2) and the first milestone's (task 4.4).
+  context: 8192,
   weights: 'bf16',
   kv: 'bf16',
   phase: 'decode',

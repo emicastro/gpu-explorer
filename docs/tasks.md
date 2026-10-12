@@ -54,7 +54,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cd web && pnpm test navigation && pnpm e2e navigation`
 - [x] **4.3 Geometría de package y die.** `layoutPackage` y `layoutDie` como funciones puras desde el árbol de hardware; paleta por función; instancing. Tests de cantidades: 6 sitios de HBM con 1 atenuado, 8 GPCs, 2 mitades de L2, 10 controladores. Checklist de review de R19: geometría propia, sin assets de terceros. (R8, R19; §6.3)
   Check: `cd web && pnpm test layout && pnpm build`
-- [ ] **4.4 Hito: un kernel animado con datos reales.** Con el plan de `evaluate` (decode BF16, batch 1, 8k), animar un kernel (la GEMM QKV) recorriendo HBM → L2 → SM → tensor core, con partículas en escala logarítmica y el número exacto de bytes. El e2e lee la etiqueta de bytes y la compara con el plan. (R11; §6.6)
+- [x] **4.4 Hito: un kernel animado con datos reales.** Con el plan de `evaluate` (decode BF16, batch 1, 8k), animar un kernel (la GEMM QKV) recorriendo HBM → L2 → SM → tensor core, con partículas en escala logarítmica y el número exacto de bytes. El e2e lee la etiqueta de bytes y la compara con el plan. (R11; §6.6)
   Check: `cd web && pnpm test flow && pnpm e2e milestone`
 
 ## 5. 3D: niveles restantes

@@ -8,11 +8,13 @@ import init, {
   version as wasmVersion,
 } from '../wasm/gpuviz_wasm.js';
 import type { HwNode } from '../generated/HwNode.ts';
+import type { KernelPlan } from '../generated/KernelPlan.ts';
 import type { ModelConfig } from '../generated/ModelConfig.ts';
+import type { Quantity } from '../generated/Quantity.ts';
 import type { Scenario } from '../generated/Scenario.ts';
 import type { StepPlan } from '../generated/StepPlan.ts';
 
-export type { HwNode, ModelConfig, Scenario, StepPlan };
+export type { HwNode, KernelPlan, ModelConfig, Quantity, Scenario, StepPlan };
 
 /** Fetches and instantiates the WASM module. Call once before any other export. */
 export async function initCore(): Promise<void> {
