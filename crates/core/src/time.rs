@@ -13,7 +13,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
+use crate::fusion::{FusedStep, Kernel};
 use crate::hardware::HwNode;
+use crate::ops::OpKind;
 use crate::quantity::{Confidence, Provenance, Quantity};
 use crate::roofline::{Limit, StepRoofline};
 use crate::scenario::{GRAPH_MAX_TOKENS, Phase, Scenario};
@@ -32,7 +34,7 @@ pub struct Calibration {
     /// `η_c` against a kernel's FLOPs, interpolated in log FLOPs and
     /// clamped at both ends. FLOPs strictly increase.
     pub compute_efficiency: Vec<CurvePoint>,
-    /// Fixed cost of each kernel in a step replayed from a CUDA graph.
+    /// Fixed cost of each kernel replayed from a CUDA graph.
     pub kernel_overhead_graphs: Quantity,
     /// Fixed cost of each kernel launched one by one from the host.
     pub kernel_overhead_eager: Quantity,
@@ -169,10 +171,20 @@ fn invalid(msg: String) -> CoreError {
     CoreError::InvalidData(format!("calibration: {msg}"))
 }
 
-/// Whether vLLM replays the step from a CUDA graph: a decode step of up to
-/// 512 tokens (design §4.1).
-pub fn cuda_graphs(scenario: &Scenario) -> bool {
-    scenario.phase == Phase::Decode && scenario.tokens() <= GRAPH_MAX_TOKENS
+const SOURCE_GRAPHS: &str = "vLLM v0.31.0 vllm/config/compilation.py: set_splitting_ops_for_v1 splits PIECEWISE graphs at unified_attention_with_output and unified_kv_cache_update, and FULL graphs capture the whole forward around them; vllm/v1/cudagraph_dispatcher.py: FULL for uniform decode, PIECEWISE otherwise, up to max_cudagraph_capture_size tokens; vllm/v1/worker/gpu_model_runner.py: input prep, the attention metadata (FA3's scheduler), compute_logits and sampling run outside the model's forward";
+
+/// Whether vLLM replays `kernel` from a CUDA graph (design §4.1). A step of
+/// up to 512 tokens runs in one: FULL in decode, which holds attention and
+/// the KV write, and PIECEWISE in prefill, which leaves both out. The
+/// kernels around the model (input prep, FA3's prepare, the last-token
+/// gather, the LM head, sampling) are always launched one by one.
+pub fn in_cuda_graph(kernel: &Kernel, scenario: &Scenario) -> bool {
+    scenario.tokens() <= GRAPH_MAX_TOKENS
+        && kernel.ops.iter().any(|id| match id.kind {
+            OpKind::KvWrite | OpKind::Attention => scenario.phase == Phase::Decode,
+            // The ops that see the padded rows are the model's graph pieces.
+            kind => kind.graph_padded(),
+        })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -209,9 +221,10 @@ impl StepTime {
     }
 }
 
-/// The realistic time of every kernel of a step, from its roofline and its
+/// The realistic time of every kernel of `step`, from its roofline and its
 /// launches (both in the step's kernel order).
 pub fn realistic(
+    step: &FusedStep,
     roofline: &StepRoofline,
     launches: &[Launch],
     scenario: &Scenario,
@@ -219,9 +232,10 @@ pub fn realistic(
     sm: &Sm,
     cal: &Calibration,
 ) -> Result<StepTime, CoreError> {
-    if launches.len() != roofline.kernels.len() {
+    let n = step.kernels.len();
+    if launches.len() != n || roofline.kernels.len() != n {
         return Err(CoreError::InvalidData(format!(
-            "realistic: {} launches for {} kernels",
+            "realistic: {} launches and {} rooflines for {n} kernels",
             launches.len(),
             roofline.kernels.len()
         )));
@@ -229,9 +243,10 @@ pub fn realistic(
     let (bw, bw_prov) = hw.hbm_bandwidth()?;
     let (eta_m, eta_m_prov) = cal.memory_efficiency()?;
     let (saturate, saturate_prov) = cal.sms_to_saturate_hbm()?;
-    let (overhead, overhead_prov) = cal.kernel_overhead(cuda_graphs(scenario))?;
-    let mut kernels = Vec::with_capacity(launches.len());
-    for (k, launch) in roofline.kernels.iter().zip(launches) {
+    let graphs_prov = Provenance::new(Confidence::Documented, [SOURCE_GRAPHS]);
+    let mut kernels = Vec::with_capacity(n);
+    for ((kernel, k), launch) in step.kernels.iter().zip(&roofline.kernels).zip(launches) {
+        let (overhead, overhead_prov) = cal.kernel_overhead(in_cuda_graph(kernel, scenario))?;
         // A grid with no work still occupies a launch; give it one SM so
         // the shares below stay finite.
         let active = launch.blocks.min(sm.count).max(1);
@@ -258,7 +273,8 @@ pub fn realistic(
                 .provenance
                 .join(&launch.provenance)
                 .join(&side)
-                .join(&overhead_prov),
+                .join(&overhead_prov)
+                .join(&graphs_prov),
         });
     }
     Ok(StepTime { kernels })
@@ -297,7 +313,7 @@ mod tests {
             .iter()
             .map(|k| launch(k, &step, scenario, &schedule, &sm).expect("launches"))
             .collect();
-        let time = realistic(&roofline, &launches, scenario, &hw, &sm, &cal).expect("times");
+        let time = realistic(&step, &roofline, &launches, scenario, &hw, &sm, &cal).expect("times");
         Run {
             step,
             roofline,
@@ -582,22 +598,30 @@ mod tests {
             slots: sm.count,
             per_wave: vec![half as u32],
             persistent: false,
-            provenance: prov,
+            provenance: prov.clone(),
+        };
+        let step = FusedStep {
+            ops: vec![],
+            kernels: vec![Kernel {
+                name: "gemm".to_owned(),
+                imp: Impl::CublasBf16,
+                ops: vec![],
+                layer: None,
+                provenance: prov,
+            }],
+            layers: vec![],
         };
         let s = scenario(Phase::Prefill, 1, 4096, 4096);
-        let t = realistic(&roofline, &[launch], &s, &hw, &sm, &cal).expect("times");
+        let t = realistic(&step, &roofline, &[launch], &s, &hw, &sm, &cal).expect("times");
         let want = flops / (peak * (eta_c.0 * 0.5)) + overhead;
         let got = &t.kernels[0];
         assert_eq!(got.limit, Limit::Compute);
         assert!((got.realistic.0 / want.0 - 1.0).abs() < 1e-12, "{got:?}");
     }
 
-    #[test]
-    fn calibration_overhead_follows_cuda_graphs() {
-        assert!(cuda_graphs(&scenario(Phase::Decode, 512, 1024, 1)));
-        assert!(!cuda_graphs(&scenario(Phase::Decode, 513, 1024, 1)));
-        assert!(!cuda_graphs(&scenario(Phase::Prefill, 1, 256, 256)));
-
+    /// The fixed cost each kernel of `s` pays: its time minus its time
+    /// with no overhead, against the two calibrated values.
+    fn overheads(s: &Scenario) -> (Run, Vec<Seconds>, Seconds, Seconds) {
         let hw = hardware("h100-sxm").expect("valid preset");
         let sm = Sm::new(&hw).expect("sm limits");
         let cal = calibration("h100-sxm").expect("valid preset");
@@ -612,17 +636,92 @@ mod tests {
             kernel_overhead_eager: zero,
             ..cal
         };
-        // Every kernel pays the same fixed cost on top of its transfer or
-        // compute time.
-        for (s, want) in [
-            (scenario(Phase::Decode, 1, 350, 1), graphs),
-            (scenario(Phase::Prefill, 1, 64, 64), eager),
+        let r = run(s);
+        let without =
+            realistic(&r.step, &r.roofline, &r.launches, s, &hw, &sm, &free).expect("times");
+        let paid = r
+            .time
+            .kernels
+            .iter()
+            .zip(&without.kernels)
+            .map(|(t, w)| t.realistic - w.realistic)
+            .collect();
+        (r, paid, graphs, eager)
+    }
+
+    fn same(a: Seconds, b: Seconds) -> bool {
+        (a.0 / b.0 - 1.0).abs() < 1e-9
+    }
+
+    /// The ops of the kernels vLLM launches around the model.
+    fn around_the_model(k: &Kernel) -> bool {
+        k.ops.iter().all(|id| {
+            matches!(
+                id.kind,
+                OpKind::PrepareInputs
+                    | OpKind::AttentionSchedule
+                    | OpKind::GatherLast
+                    | OpKind::LmHead
+                    | OpKind::Sampling
+            )
+        })
+    }
+
+    fn attention(k: &Kernel) -> bool {
+        k.ops
+            .iter()
+            .any(|id| matches!(id.kind, OpKind::KvWrite | OpKind::Attention))
+    }
+
+    #[test]
+    fn graph_overhead_decode_launches_the_kernels_around_the_model_by_hand() {
+        let s = scenario(Phase::Decode, 1, 350, 1);
+        let (r, paid, graphs, eager) = overheads(&s);
+        let mut eager_kernels = 0;
+        for (k, &p) in r.step.kernels.iter().zip(&paid) {
+            if around_the_model(k) {
+                assert!(same(p, eager), "{}: {p:?}", k.name);
+                assert!(!in_cuda_graph(k, &s), "{}", k.name);
+                eager_kernels += 1;
+            } else {
+                // The FULL graph holds attention and the KV write too.
+                assert!(same(p, graphs), "{}: {p:?}", k.name);
+            }
+        }
+        // 7 input-prep kernels, FA3's prepare, the gather, the LM head and
+        // sampling.
+        assert_eq!(eager_kernels, 11);
+    }
+
+    #[test]
+    fn graph_overhead_small_prefill_runs_attention_outside_its_graph() {
+        // 300 tokens: a PIECEWISE graph cut at each attention and KV write.
+        let s = scenario(Phase::Prefill, 1, 300, 300);
+        let (r, paid, graphs, eager) = overheads(&s);
+        let (mut in_graph, mut attn) = (0, 0);
+        for (k, &p) in r.step.kernels.iter().zip(&paid) {
+            if around_the_model(k) || attention(k) {
+                assert!(same(p, eager), "{}: {p:?}", k.name);
+                attn += usize::from(attention(k));
+            } else {
+                assert!(same(p, graphs), "{}: {p:?}", k.name);
+                in_graph += 1;
+            }
+        }
+        // Per layer, 8 kernels in the graph and 3 outside it (KV write, FA3,
+        // combine), plus the final residual + RMSNorm after the layers.
+        assert_eq!((in_graph, attn), (36 * 8 + 1, 36 * 3));
+    }
+
+    #[test]
+    fn graph_overhead_over_512_tokens_is_eager_everywhere() {
+        for s in [
+            scenario(Phase::Decode, 513, 1024, 1),
+            scenario(Phase::Prefill, 1, 1024, 1024),
         ] {
-            let r = run(&s);
-            let without = realistic(&r.roofline, &r.launches, &s, &hw, &sm, &free).expect("times");
-            for (t, w) in r.time.kernels.iter().zip(&without.kernels) {
-                let paid = t.realistic - w.realistic;
-                assert!((paid.0 / want.0 - 1.0).abs() < 1e-9, "{s:?}: {paid:?}");
+            let (r, paid, _, eager) = overheads(&s);
+            for (k, &p) in r.step.kernels.iter().zip(&paid) {
+                assert!(same(p, eager), "{s:?} {}: {p:?}", k.name);
             }
         }
     }

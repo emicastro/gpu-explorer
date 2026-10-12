@@ -84,7 +84,7 @@ pub fn evaluate(hw: &str, model: &str, scenario: &Scenario) -> Result<StepPlan, 
 
 - `ops.rs` genera las ops lógicas de un paso de Qwen3 (brief §6.5, lista 1–11, y las de fuera del loop), cada una con su capa y sus formas (M, N, K o filas × columnas). Los bytes y FLOPs "sueltos" salen de esas formas (§4.2).
   - Con pesos W8A8 (`fp8_block`, `fp8_tensor`) se agregan cuatro ops de cuantización de la activación por capa, una antes de cada GEMM. W8A16 no cuantiza la activación.
-- **Relleno de CUDA graphs** (`documented`, vLLM v0.31.0: `config/compilation.py`, `v1/cudagraph_dispatcher.py`, `v1/worker/gpu_model_runner.py`, `v1/attention/backends/flash_attn.py`). Un paso de hasta 512 tokens se rellena hasta el tamaño capturado más cercano (`[1, 2, 4]`, de 8 a 248 de a 8, de 256 a 512 de a 16). En decode corre un graph FULL, que incluye la atención. En prefill corre uno PIECEWISE, con la atención fuera del graph.
+- **Relleno de CUDA graphs** (`documented`, vLLM v0.31.0: `config/compilation.py`, `v1/cudagraph_dispatcher.py`, `v1/worker/gpu_model_runner.py`, `v1/attention/backends/flash_attn.py`). Un paso de hasta 512 tokens se rellena hasta el tamaño capturado más cercano (`[1, 2, 4]`, de 8 a 248 de a 8, de 256 a 512 de a 16). En decode corre un graph FULL, que incluye la atención. En prefill corre uno PIECEWISE, con la atención y la escritura al KV fuera del graph.
   - Las ops del modelo ven el M rellenado (`Scenario::padded_tokens`): embeddings, norms, cuantización, las cuatro GEMMs, QK-norm + RoPE y SiLU·mul. Las plantillas de fusión se eligen con ese M, así que un batch de 25 a 31 va por DeepGEMM.
   - La escritura al KV y la atención ven solo los tokens reales. En PIECEWISE la atención usa la metadata real. En FULL la metadata se rellena con requests de largo 0 (query y KV) y el `slot_mapping` con −1, así que FA3, `combine` y la escritura al KV no hacen trabajo de más. Solo el `prepare` de FA3 ve el batch rellenado (`Scenario::metadata_batch`).
   - Lo que corre fuera del modelo ve el batch real: la preparación de inputs, el gather del último token, el LM head (`hidden_states[logits_indices]`) y el sampling.
@@ -174,10 +174,13 @@ t_real     = max(FLOPs / compute_ef, bytes / bw_ef) + t_overhead
 - `η_m` = 0.93 (STREAM, brief §7.1).
 - `sms_para_saturar` = 32: cuántos SMs hacen falta para saturar HBM. Sale de la ley de Little (~2.3 MB en vuelo contra ~64–96 KB por CTA de un kernel con pipeline de TMA). Responde la pregunta abierta de las 32 CTAs (brief §12): alcanzan, más o menos, en los kernels con pipeline.
 - `η_c(FLOPs)` interpola la tabla de rangos del brief §7.1 en log de FLOPs, y se acota en los extremos: 0.40 a 1e10, 0.55 a 1e11 (formas típicas de LLM), 0.75 a 1e12 (GEMMs grandes y cuadradas). La misma curva vale para la atención y los elementwise.
-- `t_overhead` es por kernel: 4 µs si vLLM reproduce el paso desde un CUDA graph (decode con hasta 512 tokens) y 6 µs si no.
+- `t_overhead` es por kernel: 4 µs si vLLM lo reproduce desde un CUDA graph y 6 µs si lo lanza a mano (`time::in_cuda_graph`; `documented` cuál es cuál, `estimated` los valores). Solo hay graph en pasos de hasta 512 tokens (§4.1):
+  - en decode (FULL), todos los kernels del modelo, incluidas la atención y la escritura al KV;
+  - en prefill (PIECEWISE), los kernels del modelo menos la atención y la escritura al KV, porque vLLM corta el graph en `unified_attention_with_output` y `unified_kv_cache_update`;
+  - nunca en los kernels de alrededor del modelo: la preparación de inputs, el `prepare` de FA3, el gather del último token, el LM head y el sampling.
 - Todos los parámetros viven en el bloque `calibration` del archivo de hardware, al lado del árbol ([ADR 0014](adr/0014-hardware-file-wraps-tree-and-calibration.md)). Todos son `estimated`, con fuentes. Las eficiencias usan la unidad adimensional `"1"`.
 - Test de calibración: decode 8B BF16, batch 1, contexto de 350 → suma de `t_real` dentro de ±15 % de 7.28 ms (GPUStack), y suma de cotas inferiores menor que 7.28 ms.
-  - Da 6.56 ms (−10 %), contra una cota de 4.54 ms. De la diferencia, ~1.6 ms son `t_overhead` (408 kernels) y ~0.35 ms son `η_m`.
+  - Da 6.58 ms (−10 %), contra una cota de 4.54 ms. De la diferencia, ~1.65 ms son `t_overhead` (397 kernels del graph y 11 de alrededor del modelo) y ~0.35 ms son `η_m`.
   - Los ~0.7 ms que faltan son tiempo del host por paso (scheduling, sampling, procesar la salida), que el TPOT medido incluye y el modelo por kernel no. La versión del benchmark (vLLM v0.11.0) tampoco es la del perfil de fusión.
 
 ### 4.5 Memoria (R5)
@@ -320,5 +323,4 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 - **Agrupación de kernels en H100 sin traza propia** (brief D14 y §12): la fusión de la cuantización por token en el camino FP8 por tensor queda `simplified` hasta tener una corrida en H100. La saturación de HBM (`sms_para_saturar` = 32) y el `t_overhead` por kernel quedan `estimated` (§4.4). Una traza de nsys en H100 los reemplazaría por medidas. La cuantización del camino FP8 por bloques ya no es una incógnita: el código fuente la deja en un kernel aparte (§4.1).
 - **El tiling de cuBLAS BF16 es una aproximación** (`simplified`). Es el camino BF16, el que más se va a mirar; la UI tiene que decirlo con claridad.
-- **Overhead por kernel en prefill chico.** Un prefill de hasta 512 tokens corre en un graph PIECEWISE (§4.1): los kernels del modelo se reproducen desde el graph y la atención no. `time::realistic` le cobra a todo el paso el overhead sin graphs (6 µs), unos 0.58 ms de más. En decode pasa lo inverso con los 11 kernels de fuera del modelo, que se lanzan a mano y hoy pagan 4 µs. Lo corrige la tarea 3.5c, sin recalibrar.
 - **El 3D es el riesgo principal de esfuerzo** (brief §2). Por eso el grupo 4 llega a un hito visible con datos reales temprano, en paralelo con el núcleo.
