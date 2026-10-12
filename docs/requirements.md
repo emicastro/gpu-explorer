@@ -59,7 +59,8 @@ Cada requisito tiene un criterio de aceptación verificable. La columna "Diseño
 | R9 | Cada componente muestra qué hace, qué guarda y qué está haciendo el LLM ahí. | Test de contenido: todo nodo del árbol de hardware tiene su entrada de prosa. Un e2e abre el panel de un SM. | §6.4, §7 |
 | R10 | Reproducción de un paso: play, pausa, scrub y velocidad; modo didáctico (duración mínima legible) y modo tiempo real (proporcional); una capa en detalle y el resto comprimido. | Tests del constructor de línea de tiempo: en modo didáctico ningún kernel dura menos que el mínimo; en tiempo real las duraciones son proporcionales; el scrub marca las capas. | §6.5 |
 | R11 | En cada kernel, el 3D muestra qué SMs tienen bloques en la onda actual, incluida la lección de split-KV, y el flujo de bytes HBM → L2 → SM → tensor core con escala logarítmica y número exacto visible. | Test de la función de mapeo: SMs ocupados = bloques de la onda (acotado por SMs). Un e2e verifica que la animación de un kernel de atención a batch 1 muestra la cantidad de SMs ocupados que da el núcleo. | §6.6 |
-| R12 | Rendimiento: 60 fps en GPU integrada moderna. | Chequeo automático de presupuesto: draw calls por frame ≤ 200 en todos los niveles (instancing). Medición manual de fps registrada en `docs/perf.md`. | §6.7 |
+| R12 | Rendimiento: 60 fps en GPU integrada moderna. | Chequeo automático de presupuesto en todos los niveles: draw calls por frame ≤ 200 (instancing) y triángulos ≤ 500 000. Medición manual de fps registrada en `docs/perf.md`. | §6.7 |
+| R21 | Estilo visual cercano a la referencia del brief (video `h9Z4oGN89MU`): materiales metálicos y mucha densidad de detalle en cada nivel. Siempre queda subordinado a R12 (ADR 0017). | Checklist de review: capturas de cada nivel aprobadas por el usuario. Tests de layout: todo detalle que parece contable tiene la cantidad del árbol. El presupuesto de R12 se sigue cumpliendo. | §6.3, §6.7 |
 
 ### Vistas 2D, perillas y glosario
 

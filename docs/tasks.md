@@ -55,11 +55,19 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 - [x] **4.3 Geometría de package y die.** `layoutPackage` y `layoutDie` como funciones puras desde el árbol de hardware; paleta por función; instancing. Tests de cantidades: 6 sitios de HBM con 1 atenuado, 8 GPCs, 2 mitades de L2, 10 controladores. Checklist de review de R19: geometría propia, sin assets de terceros. (R8, R19; §6.3)
   Check: `cd web && pnpm test layout && pnpm build`
 - [x] **4.4 Hito: un kernel animado con datos reales.** Con el plan de `evaluate` (decode BF16, batch 1, 8k), animar un kernel (la GEMM QKV) recorriendo HBM → L2 → SM → tensor core, con partículas en escala logarítmica y el número exacto de bytes. El e2e lee la etiqueta de bytes y la compara con el plan. (R11; §6.6)
+
+- [ ] **4.5 Pasada visual: metal y detalle.** El estilo de [ADR 0017](adr/0017-metallic-materials-and-detail-density.md) se aplica al package y al die, tomando como referencia el video `h9Z4oGN89MU`. Lo que manda, en orden: materiales metálicos, densidad de detalle y fluidez.
+  - `materials.ts` arma los materiales: sustrato, silicio, metal, contactos y bloques de función con el color de `palette.ts`. Cada grupo que se desvanece tiene su propio juego, así que el fundido de 4.2 sigue andando.
+  - Environment generado en código una sola vez, con `<Lightformer>` y sin presets ni archivos. Bordes biselados con una geometría compartida.
+  - Detalle contable con la cantidad del árbol: los SMs de cada GPC en el die, con los deshabilitados atenuados. Detalle de superficie con texturas generadas en runtime: pistas del sustrato, micro-bumps del interposer y grano de lógica. El detalle no recibe raycast.
+  - `window.__gpuviz.renderInfo()` en builds de prueba. Pixel ratio adaptativo con `<PerformanceMonitor>`, con tope de 2.
+  - Tests: cada `PartKind` tiene material; los SMs dibujados en el die son 144, con 132 habilitados; el fundido de un grupo no cambia la opacidad de los materiales de otro. Un e2e en package y en die exige ≤ 200 draw calls y ≤ 500 000 triángulos, y que el click al die siga entrando.
+  - Review: el usuario aprueba capturas de los dos niveles. Checklist de R19: sin HDRIs, imágenes ni modelos de terceros. (R12, R19, R21; §6.3, §6.7)
   Check: `cd web && pnpm test flow && pnpm e2e milestone`
 
 ## 5. 3D: niveles restantes
 
-- [ ] **5.1 GPC, SM y sub-partición.** Layouts y navegación de los tres niveles; SMs deshabilitados en gris; lo físico se distingue de lo lógico (warps como abstracción, brief §4.1). Tests de cantidades; un e2e baja hasta la sub-partición y vuelve con Escape verificando las migas (R7 completo). (R7, R8; §6.2, §6.3)
+- [ ] **5.1 GPC, SM y sub-partición.** Layouts y navegación de los tres niveles; SMs deshabilitados en gris; lo físico se distingue de lo lógico (warps como abstracción, brief §4.1). Tests de cantidades; un e2e baja hasta la sub-partición y vuelve con Escape verificando las migas (R7 completo). Los tres niveles usan los materiales y la regla del detalle de 4.5 (ADR 0017). Va después de 4.5. Review: el usuario aprueba capturas de los tres niveles. (R7, R8, R21; §6.2, §6.3)
   Check: `cd web && pnpm test layout && pnpm e2e navigation`
 - [ ] **5.2 Panel de componente.** El panel muestra la prosa (con un stub de contenido hasta 8.1), las `specs` y "qué hace el LLM acá" según el kernel actual. Un e2e abre el panel de un SM. (R9; §6.4)
   Check: `cd web && pnpm test panel && pnpm e2e panel`
@@ -93,7 +101,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 ## 9. Producto
 
-- [ ] **9.1 Presupuesto de rendimiento.** `renderInfo()` en builds de prueba; un e2e recorre todos los niveles y falla si los draw calls pasan de 200; medición manual de fps en GPU integrada en `docs/perf.md`. (R12; §6.7)
+- [ ] **9.1 Presupuesto de rendimiento.** Con el `renderInfo()` de 4.5, un e2e recorre todos los niveles y falla si los draw calls pasan de 200 o los triángulos de 500 000; medición manual de fps en GPU integrada en `docs/perf.md`. (R12; §6.7)
   Check: `cd web && pnpm e2e perf && test -s ../docs/perf.md`
 - [ ] **9.2 Aviso de pantalla chica y pasada de textos.** Overlay a menos de 1024 px; revisión de que todo el texto visible esté en inglés. (R17; §8)
   Check: `cd web && pnpm e2e small-screen && pnpm build`

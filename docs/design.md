@@ -244,6 +244,11 @@ Sigue cómo vLLM v0.31.0 dimensiona el KV cache al arrancar (`gpu_worker.py`, `d
 - Sub-partición: warp scheduler, register file, tensor core, CUDA cores.
 - Colores por función, definidos en una sola paleta (brief D13).
 - Instancing (`InstancedMesh`) para todo lo que se repite más de 8 veces.
+- Estilo ([ADR 0017](adr/0017-metallic-materials-and-detail-density.md)), con la referencia visual del brief (el video `h9Z4oGN89MU`) y siempre por debajo del presupuesto de §6.7:
+  - Materiales metálicos PBR. `materials.ts` es el único lugar que los arma, y `palette.ts` sigue siendo el único con colores. Cada grupo que se desvanece tiene su propio juego de materiales.
+  - Un environment map generado en código una sola vez, bordes biselados y nada de post-proceso.
+  - Regla del detalle: lo que se repite y parece contable es geometría, con la cantidad del árbol. Lo que no tiene cantidad en el árbol va como textura de superficie generada en runtime, sin archivos de imagen.
+  - El detalle no recibe raycast.
 
 ### 6.4 Panel de componente (R9)
 
@@ -274,8 +279,9 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 ### 6.7 Rendimiento (R12)
 
-- Presupuesto de ≤ 200 draw calls por frame.
-- La app expone `window.__gpuviz.renderInfo()` en builds de prueba, y un e2e recorre los niveles y lo verifica.
+- Presupuesto por frame: ≤ 200 draw calls y ≤ 500 000 triángulos ([ADR 0017](adr/0017-metallic-materials-and-detail-density.md)).
+- Pixel ratio con tope de 2, que baja hacia 1 cuando `<PerformanceMonitor>` detecta que caen los fps. La fluidez manda sobre la estética: si falta margen, se recorta detalle antes que fps.
+- La app expone `window.__gpuviz.renderInfo()` en builds de prueba (desde 4.5), y un e2e recorre los niveles y lo verifica.
 - Los fps se miden a mano en una GPU integrada y se anotan en `docs/perf.md`.
 
 ### 6.8 Perillas y vistas vinculadas (R13, R14)
@@ -329,7 +335,7 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 | R9 | §6.4, §7 | 5.2, 8.1 |
 | R10 | §6.5 | 6.1, 6.2 |
 | R11 | §6.6 | 4.4, 5.3 |
-| R12 | §6.7 | 9.1 |
+| R12 | §6.7 | 4.5, 9.1 |
 | R13 | §6.8 | 7.1 |
 | R14 | §6.8 | 7.2, 7.3 |
 | R15 | §7 | 8.1, 8.2 |
@@ -338,6 +344,7 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 | R18 | §8 | 1.1 |
 | R19 | §6.3 | 4.3 (review) |
 | R20 | §8 | 9.3 |
+| R21 | §6.3, §6.7 | 4.5, 5.1 |
 
 ## 10. Riesgos y pendientes
 
