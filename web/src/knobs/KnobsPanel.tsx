@@ -1,3 +1,4 @@
+import { Num } from '../quantity/Num.tsx';
 import { useStore } from '../state/store.ts';
 import type { TimeMode } from '../state/types.ts';
 import {
@@ -41,7 +42,7 @@ export function KnobsPanel() {
           aria-valuetext={`${String(knobs.batch)} requests`}
           onChange={(e) => { setScenario({ batch: fromSlider(Number(e.target.value), BATCH_MAX) }); }}
         />
-        <output htmlFor="knob-batch">{knobs.batch}</output>
+        <output htmlFor="knob-batch"><Num value={knobs.batch} /></output>
       </div>
       <div className="knob">
         <label htmlFor="knob-context">{decode ? 'Context' : 'Prompt'}</label>
@@ -61,7 +62,7 @@ export function KnobsPanel() {
             style={{ left: `${(100 * toSlider(YARN_FROM, CONTEXT_MAX) / STEPS).toFixed(2)}%` }}
           />
         </div>
-        <output htmlFor="knob-context">{knobs.context}</output>
+        <output htmlFor="knob-context"><Num value={knobs.context} /></output>
       </div>
       {yarn && (
         <p className="knob-note" data-testid="yarn-note">

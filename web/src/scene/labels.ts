@@ -1,6 +1,9 @@
 // Fixed labels per part kind (ADR 0018, design §6.6b): a pure function from a
 // level's placements to what each label says and where it sits. The counts
 // are the placements', which are the tree's (R8). Visible text is English (R17).
+import type { HwNode } from '../core/index.ts';
+import type { Confidence } from '../generated/Confidence.ts';
+import { worstConfidence } from '../quantity/confidence.ts';
 import type { Placement, Vec3 } from './layout.ts';
 import type { PartKind } from './palette.ts';
 
@@ -11,6 +14,48 @@ export interface SceneLabel {
   anchor: Vec3;
   /** The flow stop the label stands for (index into FLOW_STAGES), if any. */
   stop: number | null;
+  /**
+   * The worst confidence of the counts the label states (ADR 0022); null for a
+   * label with no count.
+   */
+  confidence: Confidence | null;
+}
+
+/** The nodes from `root` down to `id`, both included; empty if `id` is not in the tree. */
+function pathTo(root: HwNode, id: string): HwNode[] {
+  if (root.id === id) return [root];
+  for (const c of root.children) {
+    const below = pathTo(c, id);
+    if (below.length > 0) return [root, ...below];
+  }
+  return [];
+}
+
+/**
+ * The confidence of a counted label: the worst of the `count` and `enabled`
+ * on the tree path from the level's node down to each counted part's node. The
+ * level's node is where the paths of all the level's placements part ways. The
+ * path matters: an SM's own `count` is documented, but whether it is on comes
+ * from its TPC's `enabled`, which is simplified.
+ */
+function countConfidence(tree: HwNode, placements: Placement[], parts: Placement[]): Confidence {
+  const paths = new Map<string, HwNode[]>();
+  const pathOf = (id: string): HwNode[] => {
+    let p = paths.get(id);
+    if (!p) paths.set(id, (p = pathTo(tree, id)));
+    return p;
+  };
+  const all = placements.map((p) => pathOf(p.nodeId));
+  let depth = Math.min(...all.map((p) => p.length));
+  for (const p of all) for (let i = 0; i < depth; i++) if (p[i]?.id !== all[0]?.[i]?.id) depth = i;
+  const seen: Confidence[] = [];
+  for (const part of parts) {
+    for (const node of pathOf(part.nodeId).slice(depth)) {
+      if (node.count) seen.push(node.count.confidence);
+      if (node.enabled) seen.push(node.enabled.confidence);
+    }
+  }
+  return worstConfidence(seen);
 }
 
 /** Which part of the kind the label hangs from, and where on it. */
@@ -95,7 +140,7 @@ function anchorOf(parts: Placement[], anchor: Anchor): Vec3 {
  * front-left GPC, away from the GPC's own label. Parts a click enters say so.
  * `own` is the level's own kind, which gets no label.
  */
-export function levelLabels(placements: Placement[], own?: PartKind): SceneLabel[] {
+export function levelLabels(placements: Placement[], tree: HwNode, own?: PartKind): SceneLabel[] {
   const byKind = new Map<PartKind, Placement[]>();
   for (const p of placements) byKind.set(p.kind, [...(byKind.get(p.kind) ?? []), p]);
   const out: SceneLabel[] = [];
@@ -114,7 +159,13 @@ export function levelLabels(placements: Placement[], own?: PartKind): SceneLabel
     if (spec.counted) words.push(countText(parts));
     if (spec.hint) words.push(spec.hint);
     if (parts.some((p) => p.enterId !== null)) words.push('· click to enter');
-    out.push({ kind, text: words.join(' '), anchor: anchorOf(anchored, spec.anchor), stop: spec.stop });
+    out.push({
+      kind,
+      text: words.join(' '),
+      anchor: anchorOf(anchored, spec.anchor),
+      stop: spec.stop,
+      confidence: spec.counted ? countConfidence(tree, placements, parts) : null,
+    });
   }
   return out;
 }

@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
-import type { HwNode, KernelPlan, StepPlan } from '../core/index.ts';
+import type { HwNode, KernelPlan, Quantity, StepPlan } from '../core/index.ts';
 import { kernelLabel, kernelPlace, refOf, sameRef, sceneKernel, type KernelRef } from '../plan/kernels.ts';
 import { seekToKernel } from '../playback/driver.ts';
 import { nodeAtLevel } from '../scene/layout.ts';
 import { partColor, SM_BUSY_COLOR, smOccupancyColor } from '../scene/palette.ts';
+import { Num } from '../quantity/Num.tsx';
+import { Q } from '../quantity/Q.tsx';
 import { useStore } from '../state/store.ts';
 import { busySmKeys, smOccupancy, smSlots, splitKv, waveCount, type SplitKv } from './occupancy.ts';
 import { clampWave, useWave } from './wave.ts';
@@ -26,15 +28,15 @@ function pickable(plan: StepPlan): { kernel: KernelPlan; ref: KernelRef; label: 
 const refKey = (ref: KernelRef): string => `${ref.op.kind}@${String(ref.op.layer)}#${String(ref.nth)}`;
 
 /** The blocks of a split decode attention: a row per (request, KV head), a cell per split. */
-function SplitKvLesson({ split, oneWave }: { split: SplitKv; oneWave: boolean }) {
+function SplitKvLesson({ split, kernel, kvHeads, oneWave }: { split: SplitKv; kernel: KernelPlan; kvHeads: Quantity; oneWave: boolean }) {
   const rows = split.requests * split.kvHeads;
-  const pairs = split.requests === 1 ? `${String(split.kvHeads)} KV heads` : `${String(split.requests)} requests × ${String(split.kvHeads)} KV heads`;
   return (
     <section className="occupancy-split" data-testid="split-kv">
       <h3>Split-KV</h3>
       <p>
-        {pairs} × <strong>{split.splits}</strong> {split.splits === 1 ? 'split' : 'splits'} ={' '}
-        <strong data-testid="split-kv-blocks">{split.blocks}</strong> blocks
+        {split.requests !== 1 && <><Num value={split.requests} /> requests × </>}
+        <Q value={kvHeads} /> KV heads × <strong><Q value={kernel.grid.splits} /></strong>{' '}
+        {split.splits === 1 ? 'split' : 'splits'} = <strong data-testid="split-kv-blocks"><Q value={kernel.grid.blocks} /></strong> blocks
       </p>
       {oneWave && rows <= MAX_GRID_ROWS && (
         <div
@@ -50,8 +52,8 @@ function SplitKvLesson({ split, oneWave }: { split: SplitKv; oneWave: boolean })
       )}
       {split.splits > 1 ? (
         <p className="occupancy-note">
-          Without the split, {rows} blocks would keep {rows} of the SMs busy. Each block reads 1/{split.splits}
-          {' '}of its head&apos;s KV cache; the next kernel, the combine, merges the partial results.
+          Without the split, <Num value={rows} /> blocks would keep <Num value={rows} /> of the SMs busy. Each block reads 1/
+          <Q value={kernel.grid.splits} /> of its head&apos;s KV cache; the next kernel, the combine, merges the partial results.
         </p>
       ) : (
         <p className="occupancy-note">No split: the batch&apos;s own blocks already cover the SMs.</p>
@@ -65,7 +67,7 @@ function SplitKvLesson({ split, oneWave }: { split: SplitKv; oneWave: boolean })
  * and a kernel picker that moves the playhead. Shown
  * on the die and GPC levels, where the SMs light up.
  */
-export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads: number }) {
+export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads: Quantity }) {
   const plan = useStore((s) => s.plan);
   const ref = useStore((s) => s.sceneKernel);
   const scenario = useStore((s) => s.scenario);
@@ -84,7 +86,7 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
   const gpcId = path[1];
   const inGpc = gpcId ? busySmKeys(slots, busy, { gpcId, gpc: picks[1] ?? 0 }).size : null;
   const gpcSms = gpcId ? slots.filter((s) => s.gpcId === gpcId && s.gpc === (picks[1] ?? 0)).length : 0;
-  const split = splitKv(kernel, scenario.batch, kvHeads);
+  const split = splitKv(kernel, scenario.batch, kvHeads.value);
   // The ref may have fallen back to the default kernel: the picker shows the one on the scene.
   const shown = refOf(plan, kernel);
   const current = options.find((o) => sameRef(o.ref, shown));
@@ -106,17 +108,17 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
         </select>
       </label>
       <p>
-        <code>{kernel.name}</code> · {kernel.grid.blocks.value.toLocaleString('en-US')} blocks in {waves}{' '}
+        <code>{kernel.name}</code> · <Q value={kernel.grid.blocks} /> blocks in <Q value={kernel.grid.waves} />{' '}
         {waves === 1 ? 'wave' : 'waves'}
       </p>
       <p>
-        Wave <span data-testid="occupancy-wave">{wave + 1}</span> of {waves}:{' '}
-        <strong data-testid="occupancy-busy">{busy.size}</strong> of {slots.length} SMs busy
-        ({Math.round((100 * busy.size) / slots.length)}%)
+        Wave <span data-testid="occupancy-wave"><Num value={wave + 1} /></span> of <Num value={waves} />:{' '}
+        <strong data-testid="occupancy-busy"><Num value={busy.size} /></strong> of <Num value={slots.length} /> SMs busy
+        (<Num value={Math.round((100 * busy.size) / slots.length)} />%)
       </p>
       {inGpc !== null && (
         <p>
-          In this GPC: <strong data-testid="occupancy-gpc-busy">{inGpc}</strong> of {gpcSms}
+          In this GPC: <strong data-testid="occupancy-gpc-busy"><Num value={inGpc} /></strong> of <Num value={gpcSms} />
         </p>
       )}
       <ul className="occupancy-legend">
@@ -124,10 +126,10 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
         <li><span style={{ background: smOccupancyColor(false) }} /> idle</li>
         <li><span style={{ background: partColor('sm', false) }} /> fused off</li>
       </ul>
-      {split && <SplitKvLesson split={split} oneWave={waves === 1} />}
+      {split && <SplitKvLesson split={split} kernel={kernel} kvHeads={kvHeads} oneWave={waves === 1} />}
       {kernel.impl === 'fa3_combine' && (
         <p className="occupancy-note">
-          Merges the partial results of the attention&apos;s {kernel.grid.splits.value} splits into one
+          Merges the partial results of the attention&apos;s <Q value={kernel.grid.splits} /> splits into one
           output per head.
         </p>
       )}

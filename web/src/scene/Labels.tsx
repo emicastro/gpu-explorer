@@ -2,12 +2,16 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Vector3 } from 'three';
+import type { HwNode } from '../core/index.ts';
+import { Dot } from '../quantity/Dot.tsx';
 import { stopIsActive, useFlowStage } from '../flow/stage.ts';
 import { levelLabels } from './labels.ts';
 import type { Placement, Vec3 } from './layout.ts';
 import type { PartKind } from './palette.ts';
 
 interface LabelsProps {
+  /** The hardware tree the placements come from, for the counts' confidence. */
+  tree: HwNode;
   placements: Placement[];
   /** The level's own kind: no label for the thing you're inside. */
   own?: PartKind;
@@ -19,15 +23,17 @@ interface LabelsProps {
 /**
  * One fixed label per part kind (ADR 0018). DOM, so no draw calls and plain
  * text, in one overlay per level whose spans follow their anchors every frame.
- * The overlay never takes the pointer, so a click goes through to the part.
+ * The overlay never takes the pointer, so a click goes through to the part;
+ * a counted label carries the confidence dot of its counts, sources are in the
+ * component panel (ADR 0022).
  * A label whose flow stop is an end of the current leg lights up.
  */
-export function Labels({ placements, own, show, frame }: LabelsProps) {
+export function Labels({ tree, placements, own, show, frame }: LabelsProps) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
   const leg = useFlowStage((s) => s.leg);
-  const labels = useMemo(() => levelLabels(placements, own), [placements, own]);
+  const labels = useMemo(() => levelLabels(placements, tree, own), [placements, tree, own]);
   const root = useRef<Root | null>(null);
   const spans = useRef<(HTMLSpanElement | null)[]>([]);
   const v = useMemo(() => new Vector3(), []);
@@ -66,6 +72,7 @@ export function Labels({ placements, own, show, frame }: LabelsProps) {
               data-active={active ? 'true' : 'false'}
             >
               {l.text}
+              {l.confidence && <Dot confidence={l.confidence} />}
             </span>
           );
         })}

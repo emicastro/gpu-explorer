@@ -96,7 +96,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cd web && pnpm test selection && pnpm e2e timeline-view`
 - [x] **7.3 Roofline y barra de HBM.** Roofline log-log en SVG con techos de BF16 y FP8 y un punto por kernel; barra de HBM con el batch máximo y overflow en rojo. Un e2e hace click en un kernel de la línea de tiempo y verifica el punto resaltado en el roofline; otro mueve el contexto y verifica que cambia la barra de HBM (el e2e de R13, que la 7.1 no puede hacer porque la barra todavía no existe). (R13, R14; §6.8)
   Check: `cd web && pnpm test roofline && pnpm e2e linked-views`
-- [ ] **7.4 `<Q>` y la regla de lint.** Se aplica la [ADR 0022](adr/0022-numbers-outside-q.md).
+- [x] **7.4 `<Q>` y la regla de lint.** Se aplica la [ADR 0022](adr/0022-numbers-outside-q.md).
   - `<Q>` con indicador de confianza y un popover mínimo de fuentes al hacer hover o foco, que se cierra con Escape o blur (la 8.2 lo absorbe sin cambiar las props). `<Num>` para los números que no afirman nada.
   - Regla de ESLint local y con tipos sobre los hijos de JSX en todo `web/src/`, salvo los módulos de `<Q>` y `<Num>`: marca expresiones `number` y textos derivados de un operando `number`.
   - Migrar a `<Q>`:

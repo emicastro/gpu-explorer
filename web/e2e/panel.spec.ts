@@ -50,3 +50,34 @@ test('the panel of an SM shows its specs and the plan\'s numbers for the kernel 
   await expect(panel).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('a quantity opens its sources on focus and Escape closes them without leaving the level', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto('/');
+  await expect(page.locator('canvas')).toBeVisible();
+  await page.waitForTimeout(500);
+  await setStoreState(page, { path: ['die', G, `${G}/tpc/sm`], picks: [0, 0, 0], from: [] });
+  await waitForStore(page, (s) => s.path?.length === 3 && s.from === null);
+  await page.getByRole('button', { name: 'About this sm' }).click();
+
+  const panel = page.getByTestId('component-panel');
+  const value = panel.locator('.q').first();
+  // The click that opened the panel left the pointer over it; hover would open the popover.
+  await page.mouse.move(1, 1);
+  await expect(panel.getByRole('tooltip')).toHaveCount(0);
+  await value.focus();
+  await expect(panel.getByRole('tooltip')).toBeVisible();
+  await expect(panel.getByRole('tooltip')).toContainText(/documented|simplified|estimated/);
+
+  // Escape closes the popover first; the level stays (R7 comes after).
+  await page.keyboard.press('Escape');
+  await expect(panel.getByRole('tooltip')).toHaveCount(0);
+  expect((await getStoreState(page)).path?.length).toBe(3);
+
+  // Blur closes it too.
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(panel.getByRole('tooltip')).toBeVisible();
+  await value.blur();
+  await expect(panel.getByRole('tooltip')).toHaveCount(0);
+});

@@ -134,6 +134,10 @@ body,
   display: none;
 }
 
+.scene-label .confidence {
+  pointer-events: none;
+}
+
 .scene-label-active {
   background: rgb(143 184 255 / 85%);
   color: #0b0d12;
@@ -161,7 +165,52 @@ body,
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  margin-left: 0.35em;
   vertical-align: middle;
+}
+
+.q {
+  position: relative;
+  border-radius: 2px;
+}
+
+.q:focus-visible {
+  outline: 1px solid currentcolor;
+  outline-offset: 2px;
+}
+
+.q-aside {
+  opacity: 0.7;
+}
+
+.q-popover {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  min-width: 12em;
+  max-width: 22em;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #1b1f27;
+  border: 1px solid #3a4150;
+  color: #e6e9ef;
+  font-size: 11px;
+  font-weight: normal;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+}
+
+.hud-right .q-popover {
+  left: auto;
+  right: 0;
+}
+
+.q-popover ul {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
 }
 
 .confidence-documented {

@@ -1,4 +1,5 @@
 // Geometry of the roofline and the HBM bar (design §6.8). Pure.
+import type { Quantity } from '../generated/Quantity.ts';
 import type { StepPlan } from '../generated/StepPlan.ts';
 
 export interface RoofPoint {
@@ -37,6 +38,8 @@ export interface HbmSegment {
   key: 'weights' | 'kv' | 'other' | 'free';
   label: string;
   bytes: number;
+  /** The plan's quantities the segment adds up, for the legend (R16). */
+  parts: Quantity[];
   /** Share of the bar. */
   frac: number;
 }
@@ -58,16 +61,17 @@ export interface HbmBarGeometry {
  */
 export function hbmSegments(plan: StepPlan): HbmBarGeometry {
   const m = plan.memory;
-  const parts: [HbmSegment['key'], string, number][] = [
-    ['weights', 'Weights', m.weights.value],
-    ['kv', 'KV cache', m.kv.value],
-    ['other', 'Activations + reserve', m.activations.value + m.headroom.value],
-    ['free', 'Free', m.free.value],
+  const parts: [HbmSegment['key'], string, Quantity[]][] = [
+    ['weights', 'Weights', [m.weights]],
+    ['kv', 'KV cache', [m.kv]],
+    ['other', 'Activations + reserve', [m.activations, m.headroom]],
+    ['free', 'Free', [m.free]],
   ];
   const capacity = m.capacity.value;
-  const total = Math.max(capacity, parts.reduce((s, p) => s + p[2], 0));
+  const sized = parts.map(([key, label, qs]) => ({ key, label, parts: qs, bytes: qs.reduce((s, q) => s + q.value, 0) }));
+  const total = Math.max(capacity, sized.reduce((s, p) => s + p.bytes, 0));
   return {
-    segments: parts.map(([key, label, bytes]) => ({ key, label, bytes, frac: bytes / total })),
+    segments: sized.map((s) => ({ ...s, frac: s.bytes / total })),
     total,
     capacityFrac: capacity / total,
     excess: total - capacity,

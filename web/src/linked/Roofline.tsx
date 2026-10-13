@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { kernelLabel, refOf } from '../plan/kernels.ts';
 import { kernelIndex } from '../playback/playback.ts';
 import { seekToKernel } from '../playback/driver.ts';
+import { Num } from '../quantity/Num.tsx';
+import { Q } from '../quantity/Q.tsx';
 import { useStore } from '../state/store.ts';
 import { decadeRange, logFrac, roofPoints } from './roofline.ts';
 
@@ -39,6 +41,7 @@ export function Roofline() {
   const xEnd = Math.min(xr.max, fp8 / bw);
   const xStart = Math.max(xr.min, yr.min / bw);
   const selected = geo.points.find((p) => p.index === active);
+  const selectedKernel = selected && plan.kernels[selected.index];
 
   return (
     <section className="roofline" aria-label="Roofline" data-testid="roofline">
@@ -47,13 +50,13 @@ export function Roofline() {
         {decades(xr).map((v) => (
           <g key={`x${String(v)}`} className="roof-grid">
             <line x1={x(v)} x2={x(v)} y1={PAD.t} y2={H - PAD.b} />
-            <text x={x(v)} y={H - 8} textAnchor="middle">{tick(v)}</text>
+            <text x={x(v)} y={H - 8} textAnchor="middle"><Num value={v} format={tick} /></text>
           </g>
         ))}
         {decades(yr).map((v) => (
           <g key={`y${String(v)}`} className="roof-grid">
             <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} />
-            <text x={PAD.l - 4} y={y(v) + 3} textAnchor="end">{tick(v)}</text>
+            <text x={PAD.l - 4} y={y(v) + 3} textAnchor="end"><Num value={v} format={tick} /></text>
           </g>
         ))}
         <line className="roof-line" x1={x(xStart)} y1={y(bw * xStart)} x2={x(xEnd)} y2={y(bw * xEnd)} />
@@ -91,6 +94,11 @@ export function Roofline() {
         )}
       </svg>
       <p className="roof-axes">FLOP/byte → · FLOP/s ↑</p>
+      {selectedKernel && (
+        <p className="roof-readout" data-testid="roofline-readout">
+          {kernelLabel(selectedKernel)}: <Q value={selectedKernel.attained} compact /> at <Q value={selectedKernel.intensity} compact />
+        </p>
+      )}
     </section>
   );
 }

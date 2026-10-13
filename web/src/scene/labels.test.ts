@@ -16,7 +16,7 @@ const byKind = (labels: SceneLabel[], kind: SceneLabel['kind']) => labels.find((
 
 describe('package labels', () => {
   it('name the die, the HBM with its count, the interposer and the substrate', () => {
-    const labels = levelLabels(layoutPackage(nodeAtLevel(root, 'package')));
+    const labels = levelLabels(layoutPackage(nodeAtLevel(root, 'package')), root);
     expect(byKind(labels, 'hbm')?.text).toBe('HBM3 ×5 (+1 off)');
     expect(byKind(labels, 'die')?.text).toBe('GH100 die · click to enter');
     expect(byKind(labels, 'interposer')?.text).toBe('Interposer');
@@ -28,7 +28,7 @@ describe('package labels', () => {
 });
 
 describe('die labels', () => {
-  const labels = () => levelLabels(layoutDie(nodeAtLevel(root, 'die')), 'die');
+  const labels = () => levelLabels(layoutDie(nodeAtLevel(root, 'die')), root, 'die');
 
   it('carry the tree\'s counts', () => {
     expect(byKind(labels(), 'sm')?.text).toBe('SM ×132 (+12 off)');
@@ -67,14 +67,14 @@ describe('die labels', () => {
 describe('labels below the die', () => {
   const g = 'gpc-8tpc';
   it('GPC level counts TPCs and SMs from the tree, and says the SMs can be entered', () => {
-    const labels = levelLabels(layoutGpc(findNode(root, g)), 'gpc');
+    const labels = levelLabels(layoutGpc(findNode(root, g)), root, 'gpc');
     expect(byKind(labels, 'tpc')?.text).toBe('TPC ×8 (+1 off) · 2 SMs each');
     expect(byKind(labels, 'sm')?.text).toBe('SM ×16 (+2 off) · click to enter');
     expect(byKind(labels, 'gpc')).toBeUndefined();
   });
 
   it('SM level names the sub-partitions and what the SM shares', () => {
-    const labels = levelLabels(layoutSm(findNode(root, g), findNode(root, `${g}/tpc/sm`)), 'sm');
+    const labels = levelLabels(layoutSm(findNode(root, g), findNode(root, `${g}/tpc/sm`)), root, 'sm');
     expect(byKind(labels, 'subpartition')?.text).toBe('Sub-partition ×4 · click to enter');
     expect(byKind(labels, 'l1-shared')?.text).toBe('L1 / shared memory');
     expect(byKind(labels, 'tma')?.text).toBe('TMA');
@@ -82,11 +82,29 @@ describe('labels below the die', () => {
 
   it('sub-partition level counts the cores', () => {
     const sub = findNode(root, `${g}/tpc/sm/subpartition`);
-    const labels = levelLabels(layoutSubpartition(findNode(root, g), sub), 'subpartition');
+    const labels = levelLabels(layoutSubpartition(findNode(root, g), sub), root, 'subpartition');
     expect(byKind(labels, 'fp32-core')?.text).toBe('FP32 cores ×32');
     expect(byKind(labels, 'int32-core')?.text).toBe('INT32 cores ×16');
     expect(byKind(labels, 'fp64-core')?.text).toBe('FP64 cores ×16');
     expect(byKind(labels, 'ld-st')?.text).toBe('Load/store units ×8');
     expect(byKind(labels, 'tensor-core')?.text).toBe('Tensor core');
+  });
+});
+
+describe('label confidence (ADR 0022)', () => {
+  it('is the simplified TPC split for the SMs of a GPC, and documented for the TPC count', () => {
+    const labels = levelLabels(layoutGpc(findNode(root, 'gpc-8tpc')), root, 'gpc');
+    // 2 SMs per TPC is documented, but which TPCs are on is the simplified spread.
+    expect(byKind(labels, 'sm')?.confidence).toBe('simplified');
+    expect(byKind(labels, 'tpc')?.confidence).toBe('simplified');
+  });
+
+  it('is the worst of the counts on the path, and absent for labels with no count', () => {
+    const die = levelLabels(layoutDie(nodeAtLevel(root, 'die')), root, 'die');
+    expect(byKind(die, 'sm')?.confidence).toBe('simplified');
+    expect(byKind(die, 'l2')?.confidence).toBeNull();
+    const sub = levelLabels(layoutSubpartition(findNode(root, 'gpc-8tpc'), findNode(root, 'gpc-8tpc/tpc/sm/subpartition')), root, 'subpartition');
+    expect(byKind(sub, 'fp32-core')?.confidence).toBe('documented');
+    expect(byKind(sub, 'tensor-core')?.confidence).toBeNull();
   });
 });

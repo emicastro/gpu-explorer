@@ -1,8 +1,8 @@
-import type { Quantity } from '../core/index.ts';
 import { FLOW_COLORS, type TrafficClass } from '../scene/palette.ts';
 import { useStore } from '../state/store.ts';
 import { kernelLabel, kernelPlace, sceneKernel } from '../plan/kernels.ts';
-import { FLOW_STAGES, flowStreams, formatBytes, formatBytesShort } from './flow.ts';
+import { Q } from '../quantity/Q.tsx';
+import { FLOW_STAGES, flowStreams } from './flow.ts';
 import { stopIsActive, useFlowStage } from './stage.ts';
 
 const CLASS_LABELS: Record<TrafficClass, string> = {
@@ -10,17 +10,6 @@ const CLASS_LABELS: Record<TrafficClass, string> = {
   kv: 'KV cache',
   activations: 'Activations',
 };
-
-/** The exact count, a rounded one and its confidence. Task 7.4 replaces this with `<Q>`. */
-function Bytes({ q, testId }: { q: Quantity; testId?: string }) {
-  return (
-    <>
-      <span className="flow-exact" data-testid={testId}>{formatBytes(q.value)}</span>{' '}
-      <span className="flow-short">({formatBytesShort(q.value)})</span>{' '}
-      <span className={`confidence confidence-${q.confidence}`} title={q.confidence} aria-label={q.confidence} />
-    </>
-  );
-}
 
 /** What the particles on the die stand for, with the exact bytes of the plan (R11). */
 export function FlowLabel() {
@@ -45,13 +34,13 @@ export function FlowLabel() {
         ))}
       </p>
       <p>
-        Read from HBM: <Bytes q={kernel.bytes.hbmRead} testId="flow-bytes" />
+        Read from HBM: <Q value={kernel.bytes.hbmRead} testId="flow-bytes" />
       </p>
       <ul>
         {flowStreams(kernel).map((s) => (
           <li key={s.cls}>
             <span className="flow-swatch" style={{ background: FLOW_COLORS[s.cls] }} />
-            {CLASS_LABELS[s.cls]}: <Bytes q={s.bytes} />
+            {CLASS_LABELS[s.cls]}: <Q value={s.bytes} />
           </li>
         ))}
       </ul>

@@ -207,10 +207,11 @@ function Level({ hardware }: { hardware: HwNode }) {
         </group>
       )}
       {/* Labels stay mounted and toggle: their DOM overlay outlives the levels' meshes. */}
-      <Labels placements={packageParts} show={showPackage && !flying} />
-      <Labels placements={dieParts} own="die" show={showDie && !flying} frame={DIE_FRAME} />
+      <Labels tree={hardware} placements={packageParts} show={showPackage && !flying} />
+      <Labels tree={hardware} placements={dieParts} own="die" show={showDie && !flying} frame={DIE_FRAME} />
       {deep && (
         <Labels
+          tree={hardware}
           key={shownKey}
           placements={deep.placements}
           own={deep.own}

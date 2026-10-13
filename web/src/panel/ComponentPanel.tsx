@@ -3,7 +3,9 @@ import { sceneKernel } from '../plan/kernels.ts';
 import { findNode, nodeAtLevel } from '../scene/layout.ts';
 import { levelLabel } from '../nav/machine.ts';
 import { useStore } from '../state/store.ts';
-import { countText, formatQuantity, llmHere, proseFor, specFacts, type Fact } from './facts.ts';
+import { Num } from '../quantity/Num.tsx';
+import { Q } from '../quantity/Q.tsx';
+import { countOf, llmHere, proseFor, specFacts, type Fact } from './facts.ts';
 
 function FactRow({ fact }: { fact: Fact }) {
   return (
@@ -11,18 +13,23 @@ function FactRow({ fact }: { fact: Fact }) {
       <dt>{fact.label}</dt>
       <dd>
         {'value' in fact ? (
-          <>
-            {formatQuantity(fact.value)}{' '}
-            <span
-              className={`confidence confidence-${fact.value.confidence}`}
-              title={`${fact.value.confidence}${fact.value.sources.length ? ` · ${fact.value.sources.join('; ')}` : ''}`}
-              aria-label={fact.value.confidence}
-            />
-          </>
+          <Q value={fact.value} />
         ) : (
           fact.text
         )}
       </dd>
+    </>
+  );
+}
+
+/** `×132 (+12 off)`, the counts through `<Q>`. */
+function Count({ node }: { node: HwNode }) {
+  const count = countOf(node);
+  if (!count) return null;
+  return (
+    <>
+      ×<Q value={count.on} />
+      {count.off > 0 && <> (+<Num value={count.off} /> off)</>}
     </>
   );
 }
@@ -56,19 +63,19 @@ export function ComponentPanel({ hardware }: { hardware: HwNode }) {
   const open = selection?.kind === 'component' ? findNode(hardware, selection.id) : null;
 
   if (!open) {
+    const place = levelLabel(path.length).toLowerCase();
     return (
       <button type="button" className="panel-open" onClick={() => { select({ kind: 'component', id: here.id }); }}>
-        About this {levelLabel(path.length).toLowerCase()}
+        About this {place}
       </button>
     );
   }
   const kernel = plan ? sceneKernel(plan, ref) : null;
   const prose = proseFor(open);
-  const count = countText(open);
   return (
     <aside className="component-panel" aria-label="Component" data-testid="component-panel">
       <header>
-        <h2>{open.name}{count ? <span className="panel-count"> {count}</span> : null}</h2>
+        <h2>{open.name}{countOf(open) && <span className="panel-count"> <Count node={open} /></span>}</h2>
         <button type="button" aria-label="Close panel" onClick={() => { select(null); }}>×</button>
       </header>
       <p className={prose.stub ? 'panel-prose panel-stub' : 'panel-prose'}>{prose.text}</p>
@@ -80,9 +87,8 @@ export function ComponentPanel({ hardware }: { hardware: HwNode }) {
           <ul className="panel-children">
             {open.children.map((c) => (
               <li key={c.id}>
-                <button type="button" onClick={() => { select({ kind: 'component', id: c.id }); }}>
-                  {c.name}{countText(c) ? ` ${countText(c) ?? ''}` : ''}
-                </button>
+                <button type="button" onClick={() => { select({ kind: 'component', id: c.id }); }}>{c.name}</button>
+                {countOf(c) && <> <Count node={c} /></>}
               </li>
             ))}
           </ul>

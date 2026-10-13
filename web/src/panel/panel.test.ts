@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { evaluate, hardware, initCoreSync, type HwNode, type KernelPlan, type StepPlan } from '../core/index.ts';
 import { findNode, nodeAtLevel } from '../scene/layout.ts';
 import { DEFAULT_SCENARIO, toScenario } from '../state/store.ts';
-import { countText, formatQuantity, humanize, llmHere, proseFor, specFacts, usesTensorCores } from './facts.ts';
+import { countOf, humanize, llmHere, proseFor, specFacts, usesTensorCores } from './facts.ts';
 
 let root: HwNode;
 let plan: StepPlan;
@@ -69,16 +69,14 @@ describe('component panel facts', () => {
     const specs = specFacts(findNode(root, SM));
     expect(specs.map((s) => s.label)).toContain('Max warps');
     expect(specs.every((s) => 'value' in s && s.value.sources.length >= 0)).toBe(true);
-    expect(countText(findNode(root, 'memory-controller'))).toBe('×10 (+2 off)');
-    expect(countText(findNode(root, 'l2'))).toBe('×2');
-    expect(countText(nodeAtLevel(root, 'package'))).toBeNull();
+    const mc = countOf(findNode(root, 'memory-controller'));
+    expect([mc?.on.value, mc?.off]).toEqual([10, 2]);
+    const l2 = countOf(findNode(root, 'l2'));
+    expect([l2?.on.value, l2?.off]).toEqual([2, 0]);
+    expect(countOf(nodeAtLevel(root, 'package'))).toBeNull();
   });
 
-  it('formats quantities for reading and humanizes spec names', () => {
-    const q = { confidence: 'documented' as const, sources: [] };
-    expect(formatQuantity({ ...q, value: 50339840, unit: 'B' })).toBe('50,339,840 B (50.3 MB)');
-    expect(formatQuantity({ ...q, value: 1.83e9, unit: 'Hz' })).toBe('1.83 GHz');
-    expect(formatQuantity({ ...q, value: 65536, unit: 'count' })).toBe('65,536');
+  it('humanizes spec names', () => {
     expect(humanize('maxRegistersPerThread')).toBe('Max registers per thread');
   });
 

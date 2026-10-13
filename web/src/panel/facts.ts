@@ -2,7 +2,6 @@
 // and the plan's current kernel to display facts. The numbers are the plan's
 // and the tree's; nothing here computes a new one.
 import type { HwNode, KernelPlan, Quantity } from '../core/index.ts';
-import { formatBytes, formatBytesShort } from '../flow/flow.ts';
 import type { Impl } from '../generated/Impl.ts';
 
 /** Kernels whose math runs on the tensor cores. */
@@ -26,35 +25,24 @@ export function humanize(key: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** A quantity for reading: the exact bytes with the rounded ones, or the value with its unit. */
-export function formatQuantity(q: Quantity): string {
-  switch (q.unit) {
-    case 'B':
-      return `${formatBytes(q.value)} (${formatBytesShort(q.value)})`;
-    case 'B/s':
-      return `${formatBytesShort(q.value)}/s`;
-    case 'Hz':
-      return `${(q.value / 1e9).toFixed(2)} GHz`;
-    case 'count':
-      return Math.round(q.value).toLocaleString('en-US');
-    case '1':
-      return String(q.value);
-    default:
-      return `${q.value.toLocaleString('en-US')} ${q.unit}`;
-  }
-}
-
 /** The tree's own numbers for one instance: its specs, as facts. */
 export function specFacts(node: HwNode): Fact[] {
   return Object.entries(node.specs).map(([key, value]) => ({ label: humanize(key), value }));
 }
 
 /** How many there are in the parent, and how many are fused off: `×132 (+12 off)`. */
-export function countText(node: HwNode): string | null {
+export interface Count {
+  /** The instances that are on: the tree's `enabled`, or its `count` when none is off. */
+  on: Quantity;
+  /** Fused off; 0 when all are on. */
+  off: number;
+}
+
+export function countOf(node: HwNode): Count | null {
   if (!node.count) return null;
   const total = Math.round(node.count.value);
-  const on = Math.round(node.enabled?.value ?? total);
-  return on < total ? `×${String(on)} (+${String(total - on)} off)` : `×${String(total)}`;
+  const on = node.enabled ?? node.count;
+  return { on, off: Math.max(total - Math.round(on.value), 0) };
 }
 
 /** Prose for a component until the content pipeline (task 8.1) provides it. */

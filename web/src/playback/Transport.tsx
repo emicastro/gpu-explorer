@@ -1,10 +1,13 @@
 import { useMemo } from 'react';
 import { kernelLabel, kernelPlace } from '../plan/kernels.ts';
+import { Num } from '../quantity/Num.tsx';
 import { useStore } from '../state/store.ts';
 import { layerMarks, totalDuration } from '../timeline/timeline.ts';
 import { KernelBars } from '../timeline/KernelBars.tsx';
 import { seekToLayer } from './driver.ts';
 import { kernelAt, SPEEDS, timelineFor } from './playback.ts';
+
+const seconds = (n: number): string => n.toFixed(1);
 
 /** Play, pause, scrub and speed (design §6.5, R10); the layer in detail. */
 export function Transport() {
@@ -51,14 +54,14 @@ export function Transport() {
             ))}
           </div>
         </div>
-        <span className="transport-time">{playhead.toFixed(1)} / {total.toFixed(1)} s</span>
+        <span className="transport-time"><Num value={playhead} format={seconds} /> / <Num value={total} format={seconds} /> s</span>
       </div>
       <KernelBars />
       <div className="transport-row">
         <label>
           Speed{' '}
           <select aria-label="Speed" value={speed} onChange={(e) => { setSpeed(Number(e.target.value)); }}>
-            {SPEEDS.map((v) => <option key={v} value={v}>{v}×</option>)}
+            {SPEEDS.map((v) => <option key={v} value={v}><Num value={v} />×</option>)}
           </select>
         </label>
         <label>
@@ -68,7 +71,7 @@ export function Transport() {
             value={focus ?? ''}
             onChange={(e) => { seekToLayer(Number(e.target.value)); }}
           >
-            {plan.layers.map((l) => <option key={l.layer} value={l.layer}>{l.layer}</option>)}
+            {plan.layers.map((l) => <option key={l.layer} value={l.layer}><Num value={l.layer} /></option>)}
           </select>
         </label>
       </div>
