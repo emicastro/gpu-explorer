@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { hardware, initCoreSync, type HwNode } from '../core/index.ts';
 import { splitFrontmatter } from './frontmatter.ts';
+import { EXTRA_PART_IDS } from '../scene/parts.ts';
 import { content, crossProblems, readContent } from './index.ts';
 import { parseInline, parseMarkdown, termsInBlocks } from './markdown.ts';
 
@@ -20,20 +21,20 @@ describe('content files', () => {
   });
 
   it('link only to terms that exist, and every component of the tree has prose and none is an orphan', () => {
-    expect(crossProblems(content, contentIds)).toEqual([]);
+    expect(crossProblems(content, contentIds, EXTRA_PART_IDS)).toEqual([]);
   });
 
   it('seed a glossary and a prose entry per kind of node', () => {
     expect(content.glossary.size).toBeGreaterThan(30);
-    expect(content.components.size).toBe(contentIds.length);
+    expect(content.components.size).toBe(contentIds.length + EXTRA_PART_IDS.length);
   });
 });
 
 describe('content checks catch what is wrong', () => {
   const term = (extra: string, body = 'Body.') => `---\nid: t\nname: T\nshort: s\nrelated: []\nsources: []\n${extra}---\n\n${body}\n`;
-  const check = (files: Record<string, string>, ids: string[] = []) => {
+  const check = (files: Record<string, string>, ids: string[] = [], extras: string[] = []) => {
     const c = readContent(files);
-    return [...c.problems, ...crossProblems(c, ids)];
+    return [...c.problems, ...crossProblems(c, ids, extras)];
   };
 
   it('an unknown [[term]] in a body, a short text or a related list', () => {
@@ -65,6 +66,10 @@ describe('content checks catch what is wrong', () => {
       'content/glossary/c.md: the body is empty',
       'content/glossary/d.md: no frontmatter block (the file must start with a --- line)',
     ]);
+  });
+
+  it('an extra part without its prose file', () => {
+    expect(check({}, [], ['substrate'])).toEqual(['components/substrate: no prose for this component of the hardware tree']);
   });
 
   it('a component of the tree without prose, and prose that is no component', () => {

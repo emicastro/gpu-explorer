@@ -10,6 +10,8 @@ interface PartsProps {
   placements: Placement[];
   materials: MaterialSet;
   onEnter: (id: string, instance: number) => void;
+  /** A click on a part with no level of its own opens its panel. */
+  onSelect: (id: string) => void;
   /**
    * Overrides the palette color of an instanced part (the SMs a wave lights,
    * task 5.3); undefined keeps it. Parts drawn alone ignore it.
@@ -18,24 +20,31 @@ interface PartsProps {
 }
 
 /** Pointer events that tell the tooltip which part is under the pointer. */
-type HoverEvent = { clientX?: number; clientY?: number; nativeEvent?: { clientX: number; clientY: number } };
+type HoverEvent = {
+  clientX?: number;
+  clientY?: number;
+  nativeEvent?: { clientX: number; clientY: number };
+  stopPropagation: () => void;
+};
+/** Only the nearest part under the pointer is explained: the ones behind it get no event. */
 const hoverOver = (nodeId: string, e: HoverEvent) => {
+  e.stopPropagation();
   const n = e.nativeEvent;
   useSceneHover.getState().set({ nodeId, x: n?.clientX ?? e.clientX ?? 0, y: n?.clientY ?? e.clientY ?? 0 });
 };
-const hoverOut = () => { useSceneHover.getState().set(null); };
-
-/** Parts a click can't act on skip the raycast entirely (ADR 0017). */
-const noRaycast = () => undefined;
+/** Leaving a part clears the tooltip unless the pointer has already moved to another part. */
+const hoverOut = (nodeId?: string) => {
+  const { hover, set } = useSceneHover.getState();
+  if (nodeId === undefined || hover?.nodeId === nodeId) set(null);
+};
 
 /**
  * A kind that repeats a lot: one draw call, one color per instance. The kind's
  * parts share one size, so the geometry is built at that size and the
- * instances only move. Instanced parts are detail, and skip the raycast,
- * unless some of them can be entered (the SMs of a GPC): then the instance
- * under the pointer is the one entered.
+ * instances only move. The instance under the pointer is the one explained,
+ * and entered when it has a level of its own (the SMs of a GPC).
  */
-function InstancedParts({ list, materials, onEnter, colorOf }: PartsProps & { list: Placement[] }) {
+function InstancedParts({ list, materials, onEnter, onSelect, colorOf }: PartsProps & { list: Placement[] }) {
   const mesh = useRef<InstancedMesh>(null);
   const first = list[0];
   useLayoutEffect(() => {
@@ -54,22 +63,24 @@ function InstancedParts({ list, materials, onEnter, colorOf }: PartsProps & { li
     m.computeBoundingSphere();
   }, [list, colorOf]);
   if (!first) return null;
-  const events = list.some((p) => p.enterId !== null)
-    ? {
-        onClick: (e: { stopPropagation: () => void; instanceId?: number }) => {
-          const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
-          if (!hit?.enterId) return;
-          e.stopPropagation();
-          hoverOut();
-          onEnter(hit.enterId, hit.instance);
-        },
-        onPointerMove: (e: HoverEvent & { instanceId?: number }) => {
-          const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
-          if (hit?.enterId) hoverOver(hit.enterId, e);
-        },
-        onPointerOut: hoverOut,
-      }
-    : { raycast: noRaycast };
+  const events = {
+    onClick: (e: { stopPropagation: () => void; instanceId?: number }) => {
+      const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
+      if (!hit) return;
+      e.stopPropagation();
+      hoverOut();
+      if (hit.enterId) onEnter(hit.enterId, hit.instance);
+      else onSelect(hit.infoId);
+    },
+    onPointerMove: (e: HoverEvent & { instanceId?: number }) => {
+      const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
+      if (hit) hoverOver(hit.infoId, e);
+    },
+    onPointerOut: (e: { instanceId?: number }) => {
+      const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
+      hoverOut(hit?.infoId);
+    },
+  };
   // Geometry and material are shared: the mesh must not dispose them on unmount.
   return (
     <instancedMesh
@@ -81,8 +92,8 @@ function InstancedParts({ list, materials, onEnter, colorOf }: PartsProps & { li
   );
 }
 
-/** Draws placements as beveled boxes; clicking one with an `enterId` enters it. */
-export function Parts({ placements, materials, onEnter, colorOf }: PartsProps) {
+/** Draws placements as beveled boxes; clicking one with an `enterId` enters it, any other opens its panel. */
+export function Parts({ placements, materials, onEnter, onSelect, colorOf }: PartsProps) {
   const { instanced, single } = groupParts(placements);
   return (
     <>
@@ -93,22 +104,21 @@ export function Parts({ placements, materials, onEnter, colorOf }: PartsProps) {
           placements={placements}
           materials={materials}
           onEnter={onEnter}
+          onSelect={onSelect}
           colorOf={colorOf}
         />
       ))}
       {single.map((p) => {
-        const { enterId } = p;
-        const events = enterId
-          ? {
-              onClick: (e: { stopPropagation: () => void }) => {
-                e.stopPropagation();
-                hoverOut();
-                onEnter(enterId, p.instance);
-              },
-              onPointerMove: (e: HoverEvent) => { hoverOver(enterId, e); },
-              onPointerOut: hoverOut,
-            }
-          : { raycast: noRaycast };
+        const events = {
+          onClick: (e: { stopPropagation: () => void }) => {
+            e.stopPropagation();
+            hoverOut();
+            if (p.enterId) onEnter(p.enterId, p.instance);
+            else onSelect(p.infoId);
+          },
+          onPointerMove: (e: HoverEvent) => { hoverOver(p.infoId, e); },
+          onPointerOut: () => { hoverOut(p.infoId); },
+        };
         return (
           <mesh
             key={p.key}

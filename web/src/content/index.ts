@@ -107,7 +107,8 @@ export function readContent(files: Readonly<Record<string, string>>): Content {
  * `related` to a term that does not exist, a component of the tree without
  * prose, and prose for a component the tree doesn't have.
  */
-export function crossProblems(content: Content, contentIds: readonly string[]): string[] {
+export function crossProblems(content: Content, treeIds: readonly string[], extraIds: readonly string[] = []): string[] {
+  const contentIds = [...treeIds, ...extraIds];
   const problems: string[] = [];
   const unknown = (where: string, ids: string[]) => {
     for (const id of ids) if (!content.glossary.has(id)) problems.push(`${where}: unknown term [[${id}]]`);

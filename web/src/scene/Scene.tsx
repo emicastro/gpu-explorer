@@ -76,6 +76,8 @@ const occupancyColors = (busy: Set<string> | null) => (p: Placement): string | u
 function Level({ hardware }: { hardware: HwNode }) {
   const siblings = useRef<Group>(null);
   const enter = useStore((s) => s.enter);
+  const select = useStore((s) => s.select);
+  const explain = (id: string) => { select({ kind: 'component', id }); };
   const path = useStore((s) => s.path);
   const picks = useStore((s) => s.picks);
   const from = useStore((s) => s.from);
@@ -181,19 +183,21 @@ function Level({ hardware }: { hardware: HwNode }) {
               placements={packageParts.filter((p) => p.enterId === null)}
               materials={fadingMaterials}
               onEnter={enter}
+              onSelect={explain}
             />
           </group>
           <Parts
             placements={packageParts.filter((p) => p.enterId !== null)}
             materials={solidMaterials}
             onEnter={enter}
+            onSelect={explain}
           />
         </>
       )}
       {kernel && (showDie || showGpc) && <PulseClock key={kernel.id} clockRef={clockRef} />}
       {showDie && (
         <group position={[...DIE_FRAME.position]} scale={DIE_FRAME.scale}>
-          <Parts placements={dieParts} materials={solidMaterials} onEnter={enter} colorOf={dieColors} />
+          <Parts placements={dieParts} materials={solidMaterials} onEnter={enter} onSelect={explain} colorOf={dieColors} />
           {kernel && dieBusy && <Flow kernel={kernel} dieParts={dieParts} busy={dieBusy} clockRef={clockRef} />}
         </group>
       )}
@@ -203,6 +207,7 @@ function Level({ hardware }: { hardware: HwNode }) {
             placements={deep.placements}
             materials={solidMaterials}
             onEnter={enter}
+            onSelect={explain}
             colorOf={showGpc ? gpcColors : undefined}
           />
         </group>

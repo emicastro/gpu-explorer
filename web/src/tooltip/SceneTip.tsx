@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import type { HwNode } from '../core/index.ts';
 import { InlineText } from '../content/Prose.tsx';
 import { proseFor } from '../panel/facts.ts';
-import { findNode } from '../scene/layout.ts';
+import { findPart } from '../scene/parts.ts';
 import { useStore } from '../state/store.ts';
 import { TipBox } from './Tip.tsx';
 import { GRACE_MS, HOVER_MS, useTips } from './stack.ts';
@@ -61,7 +61,7 @@ export function SceneTip({ hardware }: { hardware: HwNode }) {
   }, [depth, id]);
 
   if (!tip || !shown) return null;
-  const node = findNode(hardware, shown.nodeId);
+  const node = findPart(hardware, shown.nodeId);
   const prose = proseFor(node);
   return (
     <span

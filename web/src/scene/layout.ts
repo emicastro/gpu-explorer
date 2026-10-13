@@ -21,6 +21,8 @@ export interface Placement {
   enabled: boolean;
   /** The node id a click enters, or null if this part is not navigable (yet). */
   enterId: string | null;
+  /** What hover and click explain: a tree node id, or an extra part's id (ADR 0025). */
+  infoId: string;
 }
 
 /** Instances of a node in its parent. */
@@ -93,6 +95,7 @@ function part(
   size: Vec3,
   enabled = true,
   enterable = false,
+  infoId = nodeId,
 ): Placement {
   return {
     key: placementKey(kind, nodeId, instance),
@@ -103,6 +106,7 @@ function part(
     size,
     enabled,
     enterId: enterable ? nodeId : null,
+    infoId,
   };
 }
 
@@ -158,7 +162,7 @@ function bumpPad(chip: Placement): Placement {
   const [x, , z] = chip.position;
   const [w, , d] = chip.size;
   return part('bumps', chip.nodeId, chip.instance, [x, INTERPOSER_TOP + 0.006, z],
-    [w + 2 * BUMP_FRINGE, 0.012, d + 2 * BUMP_FRINGE], chip.enabled);
+    [w + 2 * BUMP_FRINGE, 0.012, d + 2 * BUMP_FRINGE], chip.enabled, false, 'bumps');
 }
 
 const SUBSTRATE: Vec3 = [SUBSTRATE_W_MM * MM, 0.12, SUBSTRATE_D_MM * MM];
@@ -191,12 +195,12 @@ export function layoutPackage(pkg: HwNode): Placement[] {
   const frameY = substrateTop + STIFFENER_HEIGHT / 2;
   const [sw, , sd] = SUBSTRATE;
   const out: Placement[] = [
-    part('substrate', pkg.id, 0, [0, substrateTop - SUBSTRATE[1] / 2, 0], SUBSTRATE),
-    part('stiffener', pkg.id, 0, [0, frameY, -(sd - STIFFENER_END) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_END]),
-    part('stiffener', pkg.id, 1, [0, frameY, (sd - STIFFENER_END) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_END]),
-    part('stiffener', pkg.id, 2, [-(sw - STIFFENER_SIDE) / 2, frameY, 0], [STIFFENER_SIDE, STIFFENER_HEIGHT, sd - 2 * STIFFENER_END]),
-    part('stiffener', pkg.id, 3, [(sw - STIFFENER_SIDE) / 2, frameY, 0], [STIFFENER_SIDE, STIFFENER_HEIGHT, sd - 2 * STIFFENER_END]),
-    part('interposer', pkg.id, 0, [0, INTERPOSER_TOP - INTERPOSER[1] / 2, 0], INTERPOSER),
+    part('substrate', pkg.id, 0, [0, substrateTop - SUBSTRATE[1] / 2, 0], SUBSTRATE, true, false, 'substrate'),
+    part('stiffener', pkg.id, 0, [0, frameY, -(sd - STIFFENER_END) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_END], true, false, 'stiffener'),
+    part('stiffener', pkg.id, 1, [0, frameY, (sd - STIFFENER_END) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_END], true, false, 'stiffener'),
+    part('stiffener', pkg.id, 2, [-(sw - STIFFENER_SIDE) / 2, frameY, 0], [STIFFENER_SIDE, STIFFENER_HEIGHT, sd - 2 * STIFFENER_END], true, false, 'stiffener'),
+    part('stiffener', pkg.id, 3, [(sw - STIFFENER_SIDE) / 2, frameY, 0], [STIFFENER_SIDE, STIFFENER_HEIGHT, sd - 2 * STIFFENER_END], true, false, 'stiffener'),
+    part('interposer', pkg.id, 0, [0, INTERPOSER_TOP - INTERPOSER[1] / 2, 0], INTERPOSER, true, false, 'interposer'),
   ];
   const chips: Placement[] = [part('die', die.id, 0, [0, PACKAGE_DIE_Y, 0], PACKAGE_DIE, true, true)];
   for (const i of range(sites)) {

@@ -2,6 +2,7 @@ import type { HwNode } from '../core/index.ts';
 import { InlineText, Prose } from '../content/Prose.tsx';
 import { sceneSubject } from '../plan/kernels.ts';
 import { findNode, nodeAtLevel } from '../scene/layout.ts';
+import { findPart } from '../scene/parts.ts';
 import { levelLabel } from '../nav/machine.ts';
 import { useStore } from '../state/store.ts';
 import { Num } from '../quantity/Num.tsx';
@@ -62,7 +63,7 @@ export function ComponentPanel({ hardware }: { hardware: HwNode }) {
   const summary = useStore((s) => s.summary);
 
   const here = path.length === 0 ? nodeAtLevel(hardware, 'package') : findNode(hardware, path[path.length - 1] ?? '');
-  const open = selection?.kind === 'component' ? findNode(hardware, selection.id) : null;
+  const open = selection?.kind === 'component' ? findPart(hardware, selection.id) : null;
 
   if (!open) {
     const place = levelLabel(path.length).toLowerCase();
