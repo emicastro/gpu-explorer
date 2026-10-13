@@ -1,5 +1,9 @@
 # GPU Inference Explorer
 
+[![deploy](https://github.com/emicastro/gpu-explorer/actions/workflows/deploy.yml/badge.svg)](https://github.com/emicastro/gpu-explorer/actions/workflows/deploy.yml)
+
+**Live site: <https://emicastro.github.io/gpu-explorer/>**
+
 An interactive 3D walk through an NVIDIA H100 SXM running one inference step of Qwen3-8B in vLLM v0.31.0. You see which kernels launch, on which SMs, and how many bytes and FLOPs each one moves.
 
 ## Who it is for
