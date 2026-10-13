@@ -306,8 +306,8 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
   - pesos, KV, fase y modo de tiempo: selectores.
 - **Línea de tiempo de kernels:** barras por kernel bajo la barra de scrub (`timeline/KernelBars.tsx`), coloreadas por cota (memoria o cómputo; una capa plegada es una barra gris). Click = selección: un kernel mueve el playhead y `sceneKernel` (`seekToKernel`), una capa plegada la abre (`seekToLayer`). El kernel seleccionado de los kernels es `sceneKernel` (ADR 0020), no `selection`, que queda para componentes; el roofline (7.3) lee lo mismo.
 - **Roofline:** SVG propio, log-log, con un punto por kernel y techos de BF16 y FP8. El punto seleccionado se resalta.
-- **Barra de HBM:** pesos + KV + libre sobre 80 GB, con el batch máximo.
-- Las tres leen `selection` y escriben en ella. El 3D resalta el kernel o componente seleccionado.
+- **Barra de HBM:** pesos + KV + activaciones y reserva + libre sobre la capacidad, con el batch máximo. Con overflow, la barra abarca lo pedido: una marca señala dónde termina la capacidad y lo que queda a su derecha, en rojo, es lo que no entra.
+- Las tres vistas de kernels leen `sceneKernel` y lo escriben moviendo el playhead (`seekToKernel`); el 3D muestra ese kernel. `selection` queda para componentes.
 
 ### 6.9 Cantidades en la UI (R16)
 

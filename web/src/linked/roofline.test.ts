@@ -38,6 +38,8 @@ describe('hbmSegments', () => {
     const bar = hbmSegments(plan);
     expect(bar.overflow).toBe(false);
     expect(bar.segments.reduce((s, x) => s + x.frac, 0)).toBeCloseTo(1, 9);
+    expect(bar.capacityFrac).toBe(1);
+    expect(bar.excess).toBe(0);
   });
 
   it('grows past the capacity on overflow, with no free space', () => {
@@ -45,5 +47,9 @@ describe('hbmSegments', () => {
     expect(bar.overflow).toBe(true);
     expect(bar.total).toBeGreaterThan(huge.memory.capacity.value);
     expect(bar.segments.find((s) => s.key === 'free')?.bytes).toBe(0);
+    // The capacity mark splits the bar into what fits and the excess.
+    expect(bar.capacityFrac).toBeLessThan(1);
+    expect(bar.capacityFrac * bar.total).toBeCloseTo(huge.memory.capacity.value, 0);
+    expect(bar.excess).toBeCloseTo(bar.total - huge.memory.capacity.value, 0);
   });
 });

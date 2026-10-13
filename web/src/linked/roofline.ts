@@ -41,8 +41,22 @@ export interface HbmSegment {
   frac: number;
 }
 
-/** The bar's segments over HBM capacity; on overflow the bar grows past it and the KV is the excess. */
-export function hbmSegments(plan: StepPlan): { segments: HbmSegment[]; total: number; overflow: boolean } {
+export interface HbmBarGeometry {
+  segments: HbmSegment[];
+  /** What the bar spans: the capacity, or more on overflow. */
+  total: number;
+  /** Where the capacity ends on the bar (1 without overflow). */
+  capacityFrac: number;
+  /** Bytes past the capacity (0 without overflow). */
+  excess: number;
+  overflow: boolean;
+}
+
+/**
+ * The bar's segments over HBM capacity. On overflow the bar spans what was
+ * asked for, so the part right of `capacityFrac` is what does not fit.
+ */
+export function hbmSegments(plan: StepPlan): HbmBarGeometry {
   const m = plan.memory;
   const parts: [HbmSegment['key'], string, number][] = [
     ['weights', 'Weights', m.weights.value],
@@ -50,10 +64,13 @@ export function hbmSegments(plan: StepPlan): { segments: HbmSegment[]; total: nu
     ['other', 'Activations + reserve', m.activations.value + m.headroom.value],
     ['free', 'Free', m.free.value],
   ];
-  const total = Math.max(m.capacity.value, parts.reduce((s, p) => s + p[2], 0));
+  const capacity = m.capacity.value;
+  const total = Math.max(capacity, parts.reduce((s, p) => s + p[2], 0));
   return {
     segments: parts.map(([key, label, bytes]) => ({ key, label, bytes, frac: bytes / total })),
     total,
+    capacityFrac: capacity / total,
+    excess: total - capacity,
     overflow: m.overflow,
   };
 }

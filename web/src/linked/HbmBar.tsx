@@ -17,11 +17,20 @@ export function HbmBar() {
         {bar.segments.filter((s) => s.bytes > 0).map((s) => (
           <span key={s.key} className={`hbm-seg hbm-${s.key}`} style={{ width: `${(100 * s.frac).toFixed(3)}%` }} title={`${s.label}: ${gb(s.bytes)}`} />
         ))}
+        {bar.overflow && (
+          <span
+            className="hbm-excess"
+            data-testid="hbm-excess"
+            style={{ left: `${(100 * bar.capacityFrac).toFixed(3)}%` }}
+            title={`Over capacity: ${gb(bar.excess)}`}
+          />
+        )}
       </div>
       <ul className="hbm-legend">
         {bar.segments.map((s) => (
           <li key={s.key}><span className={`hbm-swatch hbm-${s.key}`} /> {s.label} {gb(s.bytes)}</li>
         ))}
+        {bar.overflow && <li><span className="hbm-swatch hbm-excess-swatch" /> Over capacity {gb(bar.excess)}</li>}
       </ul>
       <p data-testid="hbm-max-batch">
         {bar.overflow ? 'The KV cache does not fit. ' : ''}
