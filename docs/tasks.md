@@ -96,7 +96,18 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cd web && pnpm test selection && pnpm e2e timeline-view`
 - [x] **7.3 Roofline y barra de HBM.** Roofline log-log en SVG con techos de BF16 y FP8 y un punto por kernel; barra de HBM con el batch máximo y overflow en rojo. Un e2e hace click en un kernel de la línea de tiempo y verifica el punto resaltado en el roofline; otro mueve el contexto y verifica que cambia la barra de HBM (el e2e de R13, que la 7.1 no puede hacer porque la barra todavía no existe). (R13, R14; §6.8)
   Check: `cd web && pnpm test roofline && pnpm e2e linked-views`
-- [ ] **7.4 `<Q>` y la regla de lint.** Componente de cantidad con indicador de confianza y fuentes al hacer hover o foco; regla de ESLint que prohíbe renderizar `number` en JSX en todo `web/src/` salvo el propio `<Q>`; migrar los usos existentes: los hechos del panel (`formatQuantity` y `countText` de `panel/facts.ts`, que hoy convierten la cantidad en texto y por eso la regla no los ve) los bytes de `FlowLabel` y los números de `OccupancyCard`. Las etiquetas 3D de `scene/labels.ts` muestran conteos del árbol sin confianza: decidir cómo la llevan (ADR si hay más de una opción viable). (R16; §6.9)
+- [ ] **7.4 `<Q>` y la regla de lint.** Se aplica la [ADR 0022](adr/0022-numbers-outside-q.md).
+  - `<Q>` con indicador de confianza y un popover mínimo de fuentes al hacer hover o foco, que se cierra con Escape o blur (la 8.2 lo absorbe sin cambiar las props). `<Num>` para los números que no afirman nada.
+  - Regla de ESLint local y con tipos sobre los hijos de JSX en todo `web/src/`, salvo los módulos de `<Q>` y `<Num>`: marca expresiones `number` y textos derivados de un operando `number`.
+  - Migrar a `<Q>`:
+    - `formatQuantity` y `countText` de `panel/facts.ts`;
+    - los bytes de `FlowLabel`;
+    - los números de `OccupancyCard`, con las cabezas KV como `Quantity` del config (ADR 0010);
+    - `HbmBar` (sale `gb()`, también de los `title`);
+    - los puntos del roofline (`attained`).
+  - Migrar a `<Num>`: los ticks del roofline, el tiempo y la velocidad de `Transport` y los valores de las perillas.
+  - Etiquetas 3D: `SceneLabel.confidence`, la peor de los nodos contados, dibujada como el mismo punto, sin eventos del puntero.
+  - Tests: el render del indicador por nivel de confianza; el popover abre con foco y cierra con Escape; la regla marca `{n}`, `{x.toFixed(1)}` y `{gb(bytes)}` y deja pasar `<Q>` y `<Num>`; la etiqueta de los SMs del GPC lleva la confianza `simplified` del reparto de TPCs. (R16; §6.9)
   Check: `cd web && pnpm lint && pnpm test quantity`
 
 ## 8. Glosario y contenido

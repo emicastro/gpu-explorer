@@ -314,6 +314,11 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 - `<Q value={Quantity} />` es el único componente que muestra números: formatea con unidad y pone un indicador de confianza (punto o borde por nivel).
 - Con hover o foco muestra las fuentes, con el mismo sistema de tooltips que el glosario.
 - Una regla de ESLint del repo prohíbe renderizar `number` en JSX en todo `web/src/`, salvo dentro de `<Q>`. Los textos armados a partir de una `Quantity` (p. ej. `formatQuantity`) solo se usan dentro de `<Q>`.
+- Lo que §6.9 no previó lo resuelve la [ADR 0022](adr/0022-numbers-outside-q.md):
+  - las etiquetas 3D llevan un punto de confianza y las fuentes quedan en el panel;
+  - los números que no afirman nada (ticks, segundos del eje, perillas, ordinales) van por `<Num>`;
+  - `<Q>` trae un popover mínimo de fuentes hasta la 8.2;
+  - la regla mira los hijos de JSX y los textos derivados de números.
 
 ## 7. Glosario y contenido (R15, R9; ADR 0005)
 
