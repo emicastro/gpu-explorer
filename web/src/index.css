@@ -286,8 +286,18 @@ body,
   cursor: pointer;
 }
 
-.panel-stub {
-  color: #6b7488;
+.panel-prose p,
+.panel-prose ul {
+  margin: 6px 0;
+}
+
+.panel-prose ul {
+  padding-left: 18px;
+}
+
+.term {
+  border-bottom: 1px dotted #6b7488;
+  cursor: help;
 }
 
 .component-panel dl {

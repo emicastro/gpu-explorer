@@ -1,4 +1,5 @@
 import type { HwNode } from '../core/index.ts';
+import { InlineText, Prose } from '../content/Prose.tsx';
 import { sceneKernel } from '../plan/kernels.ts';
 import { findNode, nodeAtLevel } from '../scene/layout.ts';
 import { levelLabel } from '../nav/machine.ts';
@@ -78,7 +79,13 @@ export function ComponentPanel({ hardware }: { hardware: HwNode }) {
         <h2>{open.name}{countOf(open) && <span className="panel-count"> <Count node={open} /></span>}</h2>
         <button type="button" aria-label="Close panel" onClick={() => { select(null); }}>×</button>
       </header>
-      <p className={prose.stub ? 'panel-prose panel-stub' : 'panel-prose'}>{prose.text}</p>
+      {prose && (
+        <div className="panel-prose">
+          <p><strong>What it does:</strong> <InlineText nodes={prose.does} /></p>
+          <p><strong>What it stores:</strong> <InlineText nodes={prose.stores} /></p>
+          <Prose blocks={prose.body} />
+        </div>
+      )}
       <Facts title="Specs (one instance)" facts={specFacts(open)} />
       <Facts title="What the LLM does here" facts={llmHere(open, kernel)} />
       {open.children.length > 0 && (

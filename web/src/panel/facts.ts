@@ -2,6 +2,7 @@
 // and the plan's current kernel to display facts. The numbers are the plan's
 // and the tree's; nothing here computes a new one.
 import type { HwNode, KernelPlan, Quantity } from '../core/index.ts';
+import { content, type ComponentEntry } from '../content/index.ts';
 import type { Impl } from '../generated/Impl.ts';
 
 /** Kernels whose math runs on the tensor cores. */
@@ -45,9 +46,9 @@ export function countOf(node: HwNode): Count | null {
   return { on, off: Math.max(total - Math.round(on.value), 0) };
 }
 
-/** Prose for a component until the content pipeline (task 8.1) provides it. */
-export function proseFor(node: HwNode): { text: string; stub: boolean } {
-  return { text: `${node.name}: the description has not been written yet.`, stub: true };
+/** The prose of a component, from `content/components/`; null when the file is missing (the content test fails on that). */
+export function proseFor(node: HwNode): ComponentEntry | null {
+  return content.components.get(node.contentId) ?? null;
 }
 
 const text = (label: string, t: string): Fact => ({ label, text: t });

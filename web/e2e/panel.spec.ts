@@ -25,6 +25,9 @@ test('the panel of an SM shows its specs and the plan\'s numbers for the kernel 
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('heading', { name: /^SM/ })).toBeVisible();
   await expect(panel).toContainText('Max warps');
+  // The prose is the SM's file under content/components/ (R9), terms marked.
+  await expect(panel).toContainText('What it does: The unit that runs thread blocks');
+  await expect(panel.locator('.term[data-term="thread-block"]').first()).toBeVisible();
   await expect(panel).toContainText('64');
 
   // "What the LLM does here" carries the plan's block count for the QKV GEMM.

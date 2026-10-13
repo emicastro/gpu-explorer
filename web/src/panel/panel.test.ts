@@ -80,7 +80,7 @@ describe('component panel facts', () => {
     expect(humanize('maxRegistersPerThread')).toBe('Max registers per thread');
   });
 
-  it('marks prose as a stub until the content pipeline exists', () => {
-    expect(proseFor(findNode(root, SM)).stub).toBe(true);
+  it('reads a component\'s prose from the content files', () => {
+    expect(proseFor(findNode(root, SM))?.id).toBe('sm');
   });
 });
