@@ -94,23 +94,23 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cd web && pnpm test knobs && pnpm e2e knobs`
 - [ ] **7.2 Vista de línea de tiempo de kernels.** Barras por kernel con selección compartida; resaltado en el 3D. (R14; §6.8)
   Check: `cd web && pnpm test selection && pnpm e2e timeline-view`
-- [ ] **7.3 Roofline y barra de HBM.** Roofline log-log en SVG con techos de BF16 y FP8 y un punto por kernel; barra de HBM con el batch máximo y overflow en rojo. Un e2e hace click en un kernel de la línea de tiempo y verifica el punto resaltado en el roofline. (R13, R14; §6.8)
+- [ ] **7.3 Roofline y barra de HBM.** Roofline log-log en SVG con techos de BF16 y FP8 y un punto por kernel; barra de HBM con el batch máximo y overflow en rojo. Un e2e hace click en un kernel de la línea de tiempo y verifica el punto resaltado en el roofline; otro mueve el contexto y verifica que cambia la barra de HBM (el e2e de R13, que la 7.1 no puede hacer porque la barra todavía no existe). (R13, R14; §6.8)
   Check: `cd web && pnpm test roofline && pnpm e2e linked-views`
-- [ ] **7.4 `<Q>` y la regla de lint.** Componente de cantidad con indicador de confianza y fuentes al hacer hover o foco; regla de ESLint que prohíbe renderizar `number` en `views/` y `ui/`; migrar los usos existentes. (R16; §6.9)
+- [ ] **7.4 `<Q>` y la regla de lint.** Componente de cantidad con indicador de confianza y fuentes al hacer hover o foco; regla de ESLint que prohíbe renderizar `number` en JSX en todo `web/src/` salvo el propio `<Q>`; migrar los usos existentes: los hechos del panel (`formatQuantity` y `countText` de `panel/facts.ts`, que hoy convierten la cantidad en texto y por eso la regla no los ve) los bytes de `FlowLabel` y los números de `OccupancyCard`. Las etiquetas 3D de `scene/labels.ts` muestran conteos del árbol sin confianza: decidir cómo la llevan (ADR si hay más de una opción viable). (R16; §6.9)
   Check: `cd web && pnpm lint && pnpm test quantity`
 
 ## 8. Glosario y contenido
 
-- [ ] **8.1 Pipeline de contenido.** Parser de frontmatter y renderer de `[[id]]`; `content/glossary/` sembrado desde `docs/GLOSSARY.md` (traducido al inglés); `content/components/` con una entrada por nodo del árbol de hardware. Test de contenido: links rotos, campos faltantes, componentes sin prosa y huérfanos. (R9, R15; §7; ADR 0005)
+- [ ] **8.1 Pipeline de contenido.** Parser de frontmatter y renderer de `[[id]]`; `content/glossary/` sembrado desde `docs/GLOSSARY.md` (traducido al inglés); `content/components/` con una entrada por nodo del árbol de hardware; el panel de componente lee de ahí (`proseFor` en `panel/facts.ts` deja de devolver el stub). Test de contenido: links rotos, campos faltantes, componentes sin prosa y huérfanos. (R9, R15; §7; ADR 0005)
   Check: `cd web && pnpm test content`
 - [ ] **8.2 Tooltips anidados.** Pila de tooltips; hover de 600 ms o foco; fijado con click o a los 1.5 s; anidados; Escape; el mismo componente en el 3D, sobre los componentes. Un e2e abre un tooltip y uno anidado con el mouse, y repite con el teclado. (R15; §7)
   Check: `cd web && pnpm test tooltip && pnpm e2e tooltips`
 
 ## 9. Producto
 
-- [ ] **9.1 Presupuesto de rendimiento.** Con el `renderInfo()` de 4.5, un e2e recorre todos los niveles y falla si los draw calls pasan de 200 o los triángulos de 500 000; medición manual de fps en GPU integrada en `docs/perf.md`. (R12; §6.7)
+- [ ] **9.1 Presupuesto de rendimiento.** Con el `renderInfo()` de 4.5, un e2e recorre todos los niveles (navegando por el store, no con clicks a fracciones fijas del canvas, que quedan solo en `navigation.spec.ts` para R7) y falla si los draw calls pasan de 200 o los triángulos de 500 000; medición manual de fps en GPU integrada en `docs/perf.md`. (R12; §6.7)
   Check: `cd web && pnpm e2e perf && test -s ../docs/perf.md`
-- [ ] **9.2 Aviso de pantalla chica y pasada de textos.** Overlay a menos de 1024 px; revisión de que todo el texto visible esté en inglés. (R17; §8)
+- [ ] **9.2 Aviso de pantalla chica y pasada de textos.** Overlay a menos de 1024 px; revisión de que todo el texto visible esté en inglés. Overlay de error si `initCore()` falla (hoy es un `await` suelto en `main.tsx` y la página queda en negro). Etiquetas que tapan lo que nombran: los núcleos de la sub-partición (FP32, INT32, FP64, load/store) y SM y TPC en el GPC (anclajes `first-top` y `last-front` de `scene/labels.ts`). (R17; §8)
   Check: `cd web && pnpm e2e small-screen && pnpm build`
 - [ ] **9.3 Deploy.** Crear el remoto en GitHub (lo hace el usuario) y escribir un workflow que corre `scripts/verify.sh` y publica `web/dist` en Pages, con el `base` de Vite correcto. (R20; §8; ADR 0007)
   Check: `gh run list --workflow deploy.yml --limit 1 --json conclusion -q '.[0].conclusion' | grep -qx success`
