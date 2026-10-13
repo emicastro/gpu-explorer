@@ -123,7 +123,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cd web && pnpm e2e perf && test -s ../docs/perf.md`
 - [x] **9.2 Aviso de pantalla chica y pasada de textos.** Overlay a menos de 1024 px; revisión de que todo el texto visible esté en inglés. Overlay de error si `initCore()` falla (hoy es un `await` suelto en `main.tsx` y la página queda en negro). Etiquetas que tapan lo que nombran: los núcleos de la sub-partición (FP32, INT32, FP64, load/store) y SM y TPC en el GPC (anclajes `first-top` y `last-front` de `scene/labels.ts`). (R17; §8)
   Check: `cd web && pnpm e2e small-screen && pnpm build`
-- [ ] **9.2b E2e estables con la suite completa.** `pnpm e2e` completo (6 workers, SwiftShader) falla en tests que pasan solos; antes de 9.3, porque el workflow corre `scripts/verify.sh`. Dos casos vistos al cerrar 9.1:
+- [x] **9.2b E2e estables con la suite completa.** `pnpm e2e` completo (6 workers, SwiftShader) falla en tests que pasan solos; antes de 9.3, porque el workflow corre `scripts/verify.sh`. Dos casos vistos al cerrar 9.1:
   - `panel.spec.ts:85`: el foco abre el tooltip y arranca el timer de fijado de 1.5 s (`tooltip/Tip.tsx:67`); con carga el blur llega después, el tooltip ya está fijado y no se cierra. Le pasa también a un usuario de teclado que espera 1.5 s y sale con Tab. Decidir con un ADR si un tooltip abierto por foco se fija solo, y ajustar `Tip.tsx` y su test.
   - `splitkv.spec.ts:5`: 15 s solo, más de 90 s con la suite; se corta esperando el store. Bajar los workers o subir el timeout de los specs lentos, con el número medido.
   Check: `cd web && pnpm test tooltip && for i in 1 2 3; do pnpm e2e || exit 1; done`

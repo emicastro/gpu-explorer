@@ -327,7 +327,7 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 - Parser: separar el frontmatter y leerlo con `yaml`. Renderer de un subconjunto chico de Markdown más `[[id]]` y `[[id|texto]]`.
 - **Tooltips:** una pila de tooltips abiertos.
   - Se abren con hover de 600 ms o con foco.
-  - Se fijan con click, o solos a los 1.5 s.
+  - Se fijan con click, o solos a los 1.5 s si los abrió el hover (ADR 0023); los que abre el foco se cierran al salir.
   - Un tooltip fijado acepta hover adentro, y desde ahí se abren los anidados.
   - `Escape` cierra el último.
   - El 3D usa el mismo componente, anclado al puntero.

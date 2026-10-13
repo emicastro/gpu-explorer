@@ -4,6 +4,8 @@ const port = '4173';
 
 export default defineConfig({
   testDir: './e2e',
+  // Measured (SwiftShader, 12 cores, 9.2b): 6 and 3 workers starve splitkv's page (timeout or card never visible); 2 passes in 13 s.
+  workers: 2,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? 'github' : 'list',
   use: {

@@ -1,3 +1,4 @@
+import { PIN_MS } from '../src/tooltip/stack.ts';
 import { expect, test } from '@playwright/test';
 import { getStoreState, setStoreState, waitForStore } from './helpers.ts';
 
@@ -81,6 +82,8 @@ test('a quantity opens its sources on focus and Escape closes them without leavi
   await value.blur();
   await value.focus();
   await expect(panel.getByRole('tooltip')).toBeVisible();
+  // Past the hover pin delay: a focus-opened tooltip never pins itself (ADR 0023).
+  await page.waitForTimeout(PIN_MS + 300);
   await value.blur();
   await expect(panel.getByRole('tooltip')).toHaveCount(0);
 });

@@ -58,13 +58,14 @@ export function useTip(forcedOpen = false): TipTrigger {
   }, [open, clearAll]);
   useEffect(() => clearAll, [clearAll]);
 
-  const show = useCallback(() => {
+  const show = useCallback((autoPin: boolean) => {
     window.clearTimeout(closeTimer.current);
     if (useTips.getState().items.some((t) => t.id === id)) return;
     const r = el.current?.getBoundingClientRect();
     setAnchor({ x: r?.left ?? 0, y: r?.bottom ?? 0 });
     dispatch({ type: 'open', depth, id });
-    pinTimer.current = window.setTimeout(() => { dispatch({ type: 'pin', id }); }, PIN_MS);
+    // Only a hover needs the pin timer (to cross the gap into the box); focus has no gap (ADR 0023).
+    if (autoPin) pinTimer.current = window.setTimeout(() => { dispatch({ type: 'pin', id }); }, PIN_MS);
   }, [depth, dispatch, id]);
 
   const scheduleClose = useCallback(() => {
@@ -86,11 +87,11 @@ export function useTip(forcedOpen = false): TipTrigger {
       onPointerEnter: () => {
         window.clearTimeout(closeTimer.current);
         window.clearTimeout(hoverTimer.current);
-        hoverTimer.current = window.setTimeout(show, HOVER_MS);
+        hoverTimer.current = window.setTimeout(() => { show(true); }, HOVER_MS);
       },
       onPointerLeave: scheduleClose,
       onFocus: () => {
-        if (!restoring.on) show();
+        if (!restoring.on) show(false);
       },
       onBlur: (e) => {
         if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
@@ -103,7 +104,7 @@ export function useTip(forcedOpen = false): TipTrigger {
         window.clearTimeout(pinTimer.current);
         if (pinned) dispatch({ type: 'close', id });
         else {
-          show();
+          show(false);
           dispatch({ type: 'pin', id });
         }
       },
