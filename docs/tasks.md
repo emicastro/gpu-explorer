@@ -119,7 +119,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 ## 9. Producto
 
-- [ ] **9.1 Presupuesto de rendimiento.** Con el `renderInfo()` de 4.5, un e2e recorre todos los niveles (navegando por el store, no con clicks a fracciones fijas del canvas, que quedan solo en `navigation.spec.ts` para R7) y falla si los draw calls pasan de 200 o los triángulos de 500 000; medición manual de fps en GPU integrada en `docs/perf.md`. (R12; §6.7)
+- [x] **9.1 Presupuesto de rendimiento.** Con el `renderInfo()` de 4.5, un e2e recorre todos los niveles (navegando por el store, no con clicks a fracciones fijas del canvas, que quedan solo en `navigation.spec.ts` para R7) y falla si los draw calls pasan de 200 o los triángulos de 500 000; medición manual de fps en GPU integrada en `docs/perf.md`. (R12; §6.7)
   Check: `cd web && pnpm e2e perf && test -s ../docs/perf.md`
 - [ ] **9.2 Aviso de pantalla chica y pasada de textos.** Overlay a menos de 1024 px; revisión de que todo el texto visible esté en inglés. Overlay de error si `initCore()` falla (hoy es un `await` suelto en `main.tsx` y la página queda en negro). Etiquetas que tapan lo que nombran: los núcleos de la sub-partición (FP32, INT32, FP64, load/store) y SM y TPC en el GPC (anclajes `first-top` y `last-front` de `scene/labels.ts`). (R17; §8)
   Check: `cd web && pnpm e2e small-screen && pnpm build`
