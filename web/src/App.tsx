@@ -8,6 +8,8 @@ import type { HwNode, ModelConfig } from './core/index.ts';
 import { usePlaybackDriver } from './playback/driver.ts';
 import { Transport } from './playback/Transport.tsx';
 import { OccupancyCard } from './occupancy/OccupancyCard.tsx';
+import { HbmBar } from './linked/HbmBar.tsx';
+import { Roofline } from './linked/Roofline.tsx';
 import { Scene } from './scene/Scene.tsx';
 
 export function App({ hardware, model }: { hardware: HwNode; model: ModelConfig }) {
@@ -21,6 +23,8 @@ export function App({ hardware, model }: { hardware: HwNode; model: ModelConfig 
       <div className="hud-right">
         <KnobsPanel />
         <FlowLabel />
+        <HbmBar />
+        <Roofline />
         <OccupancyCard hardware={hardware} kvHeads={model.config.num_key_value_heads} />
       </div>
       <Transport />

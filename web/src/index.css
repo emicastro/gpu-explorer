@@ -497,3 +497,38 @@ body,
   outline-offset: -2px;
   z-index: 1;
 }
+
+/* Linked views: the HBM bar and the roofline (design §6.8). */
+.hbm, .roofline {
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgb(18 21 30 / 85%);
+  font: 12px system-ui, sans-serif;
+  color: #c9d1e0;
+}
+
+.hbm h3, .roofline h3 { margin: 0 0 6px; font-size: 13px; }
+.hbm p, .roof-axes { margin: 6px 0 0; color: #8b95a9; }
+
+.hbm-bar { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: #232a3b; }
+.hbm-seg { height: 100%; }
+.hbm-weights { background: #3f6fb5; }
+.hbm-kv { background: #c98a3a; }
+.hbm-other { background: #55607a; }
+.hbm-free { background: #2f7d5b; }
+.hbm-overflow .hbm-kv { background: #d23b3b; }
+.hbm-overflow { outline: 1px solid #d23b3b; }
+
+.hbm-legend { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.hbm-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+
+.roofline svg { width: 100%; height: auto; display: block; }
+.roof-grid line { stroke: #2c3550; stroke-width: 0.5; }
+.roof-grid text, .roof-name { fill: #8b95a9; font-size: 8px; }
+.roof-line { stroke: #8b95a9; stroke-width: 1.2; }
+.roof-bf16 { stroke: #3f6fb5; }
+.roof-fp8 { stroke: #c98a3a; }
+.roof-point { cursor: pointer; opacity: 0.8; }
+.roof-point-memory { fill: #3f6fb5; }
+.roof-point-compute { fill: #c98a3a; }
+.roof-point-selected { fill: #f2f5fb; stroke: #f2f5fb; opacity: 1; }
