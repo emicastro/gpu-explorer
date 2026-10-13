@@ -53,9 +53,11 @@ export interface PlaybackSlice {
   speed: number;
   timeMode: TimeMode;
   playing: boolean;
+  /** The layer shown kernel by kernel on the timeline; the others fold (design §6.5). */
+  focusLayer: number | null;
   /**
-   * The kernel the scene, the flow label and the panel show (ADR 0020). Task
-   * 6.2 sets it from the playhead; until then the occupancy card's picker does.
+   * The kernel the scene, the flow label and the panel show (ADR 0020). The
+   * playback driver writes it from the playhead (`playback/driver.ts`).
    */
   sceneKernel: KernelRef;
   setSceneKernel: (ref: KernelRef) => void;
@@ -63,6 +65,7 @@ export interface PlaybackSlice {
   setSpeed: (speed: number) => void;
   setTimeMode: (mode: TimeMode) => void;
   setPlaying: (playing: boolean) => void;
+  setFocusLayer: (layer: number | null) => void;
 }
 
 export interface NavigationSlice extends NavState {

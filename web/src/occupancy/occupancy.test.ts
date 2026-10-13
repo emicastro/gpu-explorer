@@ -7,7 +7,7 @@ import { layoutDie, layoutGpc, nodeAtLevel, type Placement } from '../scene/layo
 import { DEFAULT_SCENARIO, toScenario } from '../state/store.ts';
 import type { Knobs } from '../state/types.ts';
 import { busySmKeys, smOccupancy, smSlots, splitKv, waveCount, type SmSlot } from './occupancy.ts';
-import { clampWave, waveAt, WAVE_SECONDS } from './wave.ts';
+import { clampWave } from './wave.ts';
 
 let root: HwNode;
 let die: HwNode;
@@ -158,14 +158,7 @@ describe('kernel refs (ADR 0020)', () => {
   });
 });
 
-describe('the wave clock', () => {
-  it('takes turns over the waves, one pulse each', () => {
-    expect(waveAt(0, 3)).toBe(0);
-    expect(waveAt(WAVE_SECONDS * 1.5, 3)).toBe(1);
-    expect(waveAt(WAVE_SECONDS * 3.2, 3)).toBe(0);
-    expect(waveAt(100, 1)).toBe(0);
-  });
-
+describe('the wave shown', () => {
   it('clamps a wave left over from a longer kernel', () => {
     expect(clampWave(2, 1)).toBe(0);
     expect(clampWave(1, 3)).toBe(1);

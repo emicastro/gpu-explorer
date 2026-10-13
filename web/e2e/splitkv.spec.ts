@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { timelineFor } from '../src/playback/playback.ts';
 import { getRenderInfo, getStoreState, setStoreState, waitForStore } from './helpers.ts';
 
 test('decode attention at batch 1 and 8k lights 104 SMs: 8 KV heads × 13 splits', async ({ page }) => {
@@ -64,11 +65,17 @@ test('a GEMM with more blocks than SMs takes turns in waves', async ({ page }) =
   await card.getByLabel('Kernel').selectOption({ label: 'gate/up projection · layer 0' });
   const { plan } = await getStoreState(page);
   const gateUp = plan?.kernels.find((k) => k.layer === 0 && k.ops.some((o) => o.kind === 'gate_up_proj'));
-  if (!gateUp) throw new Error('the plan has no gate/up GEMM in layer 0');
+  if (!plan || !gateUp) throw new Error('the plan has no gate/up GEMM in layer 0');
   const waves = gateUp.grid.perWave;
   expect(waves.length).toBeGreaterThan(1);
   await expect(card).toContainText(`of ${String(waves.length)}`);
-  // The last wave is the partial one; the clock gets there within one loop.
-  await expect(page.getByTestId('occupancy-wave')).toHaveText(String(waves.length), { timeout: 30_000 });
+  // The waves follow the playhead: the end of the kernel is its last, partial wave.
+  await expect(page.getByTestId('occupancy-wave')).toHaveText('1');
+  const { playhead, timeMode, focusLayer } = await getStoreState(page);
+  const segments = timelineFor(plan, timeMode ?? 'didactic', focusLayer ?? null);
+  const segment = segments.find((s) => s.first <= plan.kernels.indexOf(gateUp) && plan.kernels.indexOf(gateUp) < s.end);
+  if (!segment || playhead === undefined) throw new Error('the kernel is not on the timeline');
+  await setStoreState(page, { playhead: segment.start + segment.duration - 1e-6 });
+  await expect(page.getByTestId('occupancy-wave')).toHaveText(String(waves.length));
   await expect(page.getByTestId('occupancy-busy')).toHaveText(String(Math.min(waves.at(-1) ?? 0, 132)));
 });

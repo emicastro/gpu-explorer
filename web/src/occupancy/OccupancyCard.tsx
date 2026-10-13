@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { HwNode, KernelPlan, StepPlan } from '../core/index.ts';
 import { kernelLabel, kernelPlace, refOf, sameRef, sceneKernel, type KernelRef } from '../plan/kernels.ts';
+import { seekToKernel } from '../playback/driver.ts';
 import { nodeAtLevel } from '../scene/layout.ts';
 import { partColor, SM_BUSY_COLOR, smOccupancyColor } from '../scene/palette.ts';
 import { useStore } from '../state/store.ts';
@@ -61,13 +62,12 @@ function SplitKvLesson({ split, oneWave }: { split: SplitKv; oneWave: boolean })
 
 /**
  * Which SMs the scene's kernel occupies in the current wave (design §6.6, R11),
- * and the kernel picker that stands in for the playhead until task 6.2. Shown
+ * and a kernel picker that moves the playhead. Shown
  * on the die and GPC levels, where the SMs light up.
  */
 export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads: number }) {
   const plan = useStore((s) => s.plan);
   const ref = useStore((s) => s.sceneKernel);
-  const setSceneKernel = useStore((s) => s.setSceneKernel);
   const scenario = useStore((s) => s.scenario);
   const path = useStore((s) => s.path);
   const picks = useStore((s) => s.picks);
@@ -97,7 +97,7 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
           value={current ? refKey(current.ref) : ''}
           onChange={(e) => {
             const picked = options.find((o) => refKey(o.ref) === e.target.value);
-            if (picked) setSceneKernel(picked.ref);
+            if (picked) seekToKernel(picked.ref);
           }}
         >
           {options.map((o) => (

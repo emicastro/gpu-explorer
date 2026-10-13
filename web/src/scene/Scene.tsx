@@ -17,7 +17,7 @@ import {
 import { useStore } from '../state/store.ts';
 import type { HwNode } from '../core/index.ts';
 import { busySmKeys, smOccupancy, smSlots, waveCount } from '../occupancy/occupancy.ts';
-import { clampWave, useWave, waveAt } from '../occupancy/wave.ts';
+import { clampWave, useWave } from '../occupancy/wave.ts';
 import { sceneKernel } from '../plan/kernels.ts';
 import { Flow } from './Flow.tsx';
 import { Labels } from './Labels.tsx';
@@ -50,20 +50,16 @@ function useMaterials(fades: boolean): MaterialSet {
 }
 
 /**
- * The scene's wave clock (ADR 0020): seconds since the kernel came on, and the
- * wave they fall in. Mounted per kernel, so a new kernel starts at wave 0. The
- * flow reads the same seconds, so its pulses start with the waves.
+ * The flow's pulse clock: seconds since the kernel came on. Mounted per kernel,
+ * so a new kernel starts a new pulse. The wave is not the clock's: it follows
+ * the playhead (ADR 0020).
  */
-function WaveTicker({ waves, clockRef }: { waves: number; clockRef: RefObject<number> }) {
-  const setWave = useWave((s) => s.setWave);
+function PulseClock({ clockRef }: { clockRef: RefObject<number> }) {
   useEffect(() => {
     clockRef.current = 0;
-    setWave(0);
-  }, [clockRef, setWave]);
+  }, [clockRef]);
   useFrame((_, delta) => {
     clockRef.current += delta;
-    const wave = waveAt(clockRef.current, waves);
-    if (useWave.getState().wave !== wave) setWave(wave);
   });
   return null;
 }
@@ -193,7 +189,7 @@ function Level({ hardware }: { hardware: HwNode }) {
           />
         </>
       )}
-      {kernel && (showDie || showGpc) && <WaveTicker key={kernel.id} waves={waves} clockRef={clockRef} />}
+      {kernel && (showDie || showGpc) && <PulseClock key={kernel.id} clockRef={clockRef} />}
       {showDie && (
         <group position={[...DIE_FRAME.position]} scale={DIE_FRAME.scale}>
           <Parts placements={dieParts} materials={solidMaterials} onEnter={enter} colorOf={dieColors} />

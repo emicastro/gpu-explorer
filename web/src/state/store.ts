@@ -77,12 +77,14 @@ const playbackSlice: Slice<PlaybackSlice> = (set) => ({
   speed: 1,
   timeMode: 'didactic',
   playing: false,
+  focusLayer: 0,
   sceneKernel: DEFAULT_KERNEL,
   setSceneKernel: (sceneKernel) => { set({ sceneKernel }); },
   setPlayhead: (playhead) => { set({ playhead }); },
   setSpeed: (speed) => { set({ speed }); },
   setTimeMode: (timeMode) => { set({ timeMode }); },
   setPlaying: (playing) => { set({ playing }); },
+  setFocusLayer: (focusLayer) => { set({ focusLayer }); },
 });
 
 const navigationSlice: Slice<NavigationSlice> = (set, get) => {

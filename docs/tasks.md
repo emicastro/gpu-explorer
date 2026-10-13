@@ -83,14 +83,14 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 ## 6. Reproducción del paso
 
-- [ ] **6.1 Constructor de línea de tiempo.** `buildTimeline(plan, mode, focusLayer)`: modo didáctico con duración mínima, modo tiempo real proporcional, capas comprimidas y expandibles, marcas de capa. Solo tests unitarios. (R10; §6.5)
+- [x] **6.1 Constructor de línea de tiempo.** `buildTimeline(plan, mode, focusLayer)`: modo didáctico con duración mínima, modo tiempo real proporcional, capas comprimidas y expandibles, marcas de capa. Solo tests unitarios. (R10; §6.5)
   Check: `cd web && pnpm test timeline`
-- [ ] **6.2 Controles y sincronía con la escena.** Play, pausa, scrub y velocidad; el playhead en el store; la escena anima el kernel bajo el playhead: el playhead escribe `sceneKernel` (ADR 0020), que ya leen la escena, `FlowLabel` y el panel, y la onda de los SMs sigue al playhead en vez del reloj de la escena. El selector de kernel de la tarjeta de ocupación pasa a mover el playhead, o se quita. Un e2e hace scrub hasta la capa 3 y verifica el kernel activo. (R10; §6.5)
+- [x] **6.2 Controles y sincronía con la escena.** Play, pausa, scrub y velocidad; el playhead en el store; la escena anima el kernel bajo el playhead: el playhead escribe `sceneKernel` (ADR 0020), que ya leen la escena, `FlowLabel` y el panel, y la onda de los SMs sigue al playhead en vez del reloj de la escena. El selector de kernel de la tarjeta de ocupación pasa a mover el playhead, o se quita. Un e2e hace scrub hasta la capa 3 y verifica el kernel activo. (R10; §6.5)
   Check: `cd web && pnpm test playback && pnpm e2e playback`
 
 ## 7. Perillas y vistas vinculadas
 
-- [ ] **7.1 Panel de perillas.** Batch (log), contexto (log hasta 131072 con marca de YaRN), pesos (4 opciones; FP8 por bloques como FP8 por defecto), KV, fase y modo de tiempo. Cada cambio re-evalúa. Tests del store; un e2e mueve el contexto y verifica que cambia el KV en el plan. (R13; §6.8)
+- [x] **7.1 Panel de perillas.** Batch (log), contexto (log hasta 131072 con marca de YaRN), pesos (4 opciones; FP8 por bloques como FP8 por defecto), KV, fase y modo de tiempo. Cada cambio re-evalúa. Tests del store; un e2e mueve el contexto y verifica que cambia el KV en el plan. (R13; §6.8)
   Check: `cd web && pnpm test knobs && pnpm e2e knobs`
 - [ ] **7.2 Vista de línea de tiempo de kernels.** Barras por kernel con selección compartida; resaltado en el 3D. (R14; §6.8)
   Check: `cd web && pnpm test selection && pnpm e2e timeline-view`

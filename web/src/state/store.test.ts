@@ -40,6 +40,25 @@ describe('store slices', () => {
     expect(useStore.getState().scenario).toEqual({ ...DEFAULT_SCENARIO, batch: 8 });
   });
 
+  it('produces a new plan when any one knob changes', () => {
+    useStore.getState().setEvaluator((k) => ({ ...k }) as unknown as StepPlan);
+    const changes: Partial<Knobs>[] = [
+      { batch: 8 },
+      { context: 32768 },
+      { weights: 'fp8_block' },
+      { kv: 'fp8' },
+      { phase: 'prefill' },
+    ];
+    for (const patch of changes) {
+      useStore.getState().setScenario(DEFAULT_SCENARIO);
+      const before = useStore.getState().plan;
+      useStore.getState().setScenario(patch);
+      const after = useStore.getState().plan;
+      expect(after, JSON.stringify(patch)).not.toBe(before);
+      expect(after).toMatchObject(patch);
+    }
+  });
+
   it('keeps the scenario and clears the plan when evaluate throws', () => {
     useStore.getState().setEvaluator(() => {
       throw new Error('batch does not fit in HBM');

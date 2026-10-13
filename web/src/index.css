@@ -352,3 +352,117 @@ body,
 .occupancy-note {
   color: #8b95a9;
 }
+
+/* The transport sits along the bottom, clear of the breadcrumbs and the cards. */
+.transport {
+  position: fixed;
+  left: 16px;
+  bottom: 12px;
+  width: min(560px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgb(18 22 32 / 0.88);
+  border: 1px solid #2c3550;
+  border-radius: 6px;
+  color: #c9d1e0;
+  font-size: 12px;
+}
+
+.transport-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.transport-scrub {
+  position: relative;
+  flex: 1;
+}
+
+.transport-scrub input {
+  width: 100%;
+  margin: 0;
+}
+
+.transport-marks {
+  position: relative;
+  height: 6px;
+  pointer-events: none;
+}
+
+.transport-marks span {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 6px;
+  background: #6b7a99;
+}
+
+.transport-time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.transport-now {
+  margin: 0;
+}
+
+/* The knob panel heads the right-hand stack (design §6.8). */
+.knobs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgb(18 21 30 / 85%);
+  font: 13px system-ui, sans-serif;
+  color: #c9d1e0;
+}
+
+.knob {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.knob > select {
+  grid-column: 2 / 4;
+}
+
+.knob input[type='range'] {
+  width: 100%;
+  margin: 0;
+}
+
+.knob output {
+  min-width: 52px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.knob-slider {
+  position: relative;
+}
+
+.knob-mark {
+  position: absolute;
+  bottom: -4px;
+  width: 1px;
+  height: 6px;
+  background: #e0b341;
+  pointer-events: none;
+}
+
+.knob-note {
+  margin: 0;
+  color: #e0b341;
+  font-size: 12px;
+}
+
+.knob-error {
+  color: #ff7b72;
+}
