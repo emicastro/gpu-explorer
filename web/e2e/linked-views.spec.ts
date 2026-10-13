@@ -1,16 +1,21 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { waitForStore } from './helpers.ts';
 
-test('a kernel bar lights its roofline point, and the context moves the HBM bar', async ({ page }) => {
-  test.setTimeout(90_000);
+/** Loads the app and collects console errors into the returned array. */
+async function open(page: Page): Promise<string[]> {
   const errors: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(msg.text());
   });
   page.on('pageerror', (err) => errors.push(err.message));
-
   await page.goto('/');
   await expect(page.locator('canvas')).toBeVisible();
+  return errors;
+}
+
+test('a kernel bar lights its roofline point', async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await open(page);
   const first = await waitForStore(page, (s) => s.plan != null);
   const plan = first.plan;
   if (!plan) throw new Error('no plan');
@@ -20,6 +25,13 @@ test('a kernel bar lights its roofline point, and the context moves the HBM bar'
   expect(state.sceneKernel?.op.kind).toBe('attention');
   const attention = plan.kernels.find((k) => k.ops[0]?.kind === 'attention' && k.impl !== 'fa3_combine');
   await expect(page.getByTestId('roofline-selected')).toHaveAttribute('data-kernel', attention?.id ?? '');
+  expect(errors).toEqual([]);
+});
+
+test('the context moves the HBM bar', async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = await open(page);
+  await waitForStore(page, (s) => s.plan != null);
 
   const bar = page.getByTestId('hbm-bar');
   const before = Number(await bar.getAttribute('data-kv-bytes'));
