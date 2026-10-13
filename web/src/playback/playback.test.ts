@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { evaluate, initCoreSync, type StepPlan } from '../core/index.ts';
-import { DEFAULT_KERNEL, resolveKernel } from '../plan/kernels.ts';
+import { DEFAULT_KERNEL, layerSummary, resolveKernel } from '../plan/kernels.ts';
 import { DEFAULT_SCENARIO, toScenario, useStore } from '../state/store.ts';
-import { totalDuration } from '../timeline/timeline.ts';
+import { T_MIN, totalDuration } from '../timeline/timeline.ts';
 import { seekToKernel, seekToLayer } from './driver.ts';
 import { advance, kernelAt, kernelIndex, startOfKernel, timelineFor, waveAtProgress } from './playback.ts';
 
@@ -31,20 +31,36 @@ describe('kernelAt and startOfKernel', () => {
     }
   });
 
-  it('shares a folded layer out among its kernels, so the scene keeps moving', () => {
+  it('holds one summary of its layer for the whole of a folded layer, with no strobing', () => {
     const segments = timelineFor(plan, 'didactic', 0);
     const folded = segments.find((s) => s.kind === 'layer' && s.layer === 3);
     if (!folded) throw new Error('layer 3 is not folded');
-    const seen = new Set<number>();
-    for (let i = 0; i < 200; i++) {
-      const under = kernelAt(plan, segments, folded.start + (folded.duration * (i + 0.5)) / 200);
-      if (under) seen.add(under.index);
+    for (let i = 0; i < 50; i++) {
+      const under = kernelAt(plan, segments, folded.start + (folded.duration * (i + 0.5)) / 50);
+      expect(under?.index).toBe(folded.first);
+      expect(under?.summary).toEqual({ layer: 3, why: 'folded' });
     }
-    expect(seen.size).toBeGreaterThan(5);
-    expect([...seen].every((k) => k >= folded.first && k < folded.end)).toBe(true);
-    // A kernel's start inside a folded layer lands back on that kernel.
-    const k = folded.first + 4;
-    expect(kernelAt(plan, segments, startOfKernel(plan, segments, k) + 1e-9)?.index).toBe(k);
+    // A kernel's start inside a folded layer is where the layer begins.
+    expect(startOfKernel(plan, segments, folded.first + 4)).toBe(folded.start);
+  });
+
+  it('shows the kernels of the focused layer one by one in Didactic time', () => {
+    const segments = timelineFor(plan, 'didactic', 0);
+    for (const s of segments.filter((x) => x.kind === 'kernel')) {
+      expect(kernelAt(plan, segments, s.start + s.duration / 2)?.summary).toBeNull();
+    }
+  });
+
+  it('summarises a layer kernel too short to see in Real time, and never one outside the layers', () => {
+    const segments = timelineFor(plan, 'real', 0);
+    const brief = segments.filter((x) => x.kind === 'kernel' && x.layer !== null && x.duration < T_MIN);
+    expect(brief.length).toBeGreaterThan(3);
+    for (const s of brief) {
+      expect(kernelAt(plan, segments, s.start + s.duration / 2)?.summary).toEqual({ layer: s.layer, why: 'brief' });
+    }
+    for (const s of segments.filter((x) => x.layer === null)) {
+      expect(kernelAt(plan, segments, s.start + s.duration / 2)?.summary).toBeNull();
+    }
   });
 
   it('is at the last kernel at the end of the axis, with progress 1', () => {
@@ -52,6 +68,26 @@ describe('kernelAt and startOfKernel', () => {
     const under = kernelAt(plan, segments, totalDuration(segments));
     expect(under?.index).toBe(plan.kernels.length - 1);
     expect(under?.progress).toBeCloseTo(1, 9);
+  });
+});
+
+describe('layerSummary', () => {
+  it('sums the layer: bytes and times of its kernels, and a mean SM occupancy of one wave', () => {
+    const span = plan.layers.find((l) => l.layer === 3);
+    if (!span) throw new Error('no layer 3');
+    const kernels = plan.kernels.slice(span.start, span.end);
+    const summary = layerSummary(plan, 3);
+    if (!summary) throw new Error('no summary');
+    expect(summary.bytes.hbmRead.value).toBeCloseTo(kernels.reduce((t, k) => t + k.bytes.hbmRead.value, 0), 3);
+    expect(summary.time.realistic.value).toBeCloseTo(kernels.reduce((t, k) => t + k.time.realistic.value, 0), 12);
+    const mix = summary.phaseBreakdown.read;
+    expect(mix.weights.value + mix.kv.value + mix.activations.value).toBeGreaterThan(0);
+    expect(summary.grid.perWave).toHaveLength(1);
+    const mean = summary.grid.perWave[0] ?? 0;
+    expect(mean).toBeGreaterThan(0);
+    expect(mean).toBeLessThanOrEqual(Math.max(...kernels.flatMap((k) => k.grid.perWave)));
+    expect(layerSummary(plan, 3)).toBe(summary);
+    expect(layerSummary(plan, 9999)).toBeNull();
   });
 });
 

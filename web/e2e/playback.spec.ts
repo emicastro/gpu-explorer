@@ -38,10 +38,12 @@ test('scrubbing to layer 3 puts the scene on a kernel of layer 3; playing moves 
     if (setter) Reflect.apply(setter, input, [String(value)]);
     input.dispatchEvent(new win.Event('input', { bubbles: true }));
   }, at + layer3.duration / 2);
-  const scrubbed = await waitForStore(page, (s) => s.sceneKernel?.op.layer === 3);
-  expect(scrubbed.sceneKernel?.op.layer).toBe(3);
+  // Folded: the scene shows the layer's summary, holding the layer's first kernel (ADR 0024).
+  const scrubbed = await waitForStore(page, (s) => s.summary?.layer === 3);
+  expect(scrubbed.summary).toEqual({ layer: 3, why: 'folded' });
+  expect(scrubbed.sceneKernel && resolveKernel(plan, scrubbed.sceneKernel)?.layer).toBe(3);
   await expect(page.getByTestId('transport-now')).toContainText('layer 3');
-  await expect(page.getByRole('complementary', { name: 'Data flow' })).toContainText('layer 3');
+  await expect(page.getByRole('complementary', { name: 'Data flow' })).toContainText('Layer 3');
 
   // Choosing the layer opens it kernel by kernel, from its first kernel.
   await page.getByTestId('transport').getByRole('combobox', { name: 'Layer' }).selectOption('3');

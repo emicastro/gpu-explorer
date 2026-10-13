@@ -1,6 +1,6 @@
 import type { HwNode } from '../core/index.ts';
 import { InlineText, Prose } from '../content/Prose.tsx';
-import { sceneKernel } from '../plan/kernels.ts';
+import { sceneSubject } from '../plan/kernels.ts';
 import { findNode, nodeAtLevel } from '../scene/layout.ts';
 import { levelLabel } from '../nav/machine.ts';
 import { useStore } from '../state/store.ts';
@@ -59,6 +59,7 @@ export function ComponentPanel({ hardware }: { hardware: HwNode }) {
   const select = useStore((s) => s.select);
   const plan = useStore((s) => s.plan);
   const ref = useStore((s) => s.sceneKernel);
+  const summary = useStore((s) => s.summary);
 
   const here = path.length === 0 ? nodeAtLevel(hardware, 'package') : findNode(hardware, path[path.length - 1] ?? '');
   const open = selection?.kind === 'component' ? findNode(hardware, selection.id) : null;
@@ -71,7 +72,7 @@ export function ComponentPanel({ hardware }: { hardware: HwNode }) {
       </button>
     );
   }
-  const kernel = plan ? sceneKernel(plan, ref) : null;
+  const kernel = plan ? sceneSubject(plan, ref, summary) : null;
   const prose = proseFor(open);
   return (
     <aside className="component-panel" aria-label="Component" data-testid="component-panel">

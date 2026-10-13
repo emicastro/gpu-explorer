@@ -18,7 +18,7 @@ import { useStore } from '../state/store.ts';
 import type { HwNode } from '../core/index.ts';
 import { busySmKeys, smOccupancy, smSlots, waveCount } from '../occupancy/occupancy.ts';
 import { clampWave, useWave } from '../occupancy/wave.ts';
-import { sceneKernel } from '../plan/kernels.ts';
+import { sceneSubject } from '../plan/kernels.ts';
 import { Flow } from './Flow.tsx';
 import { Labels } from './Labels.tsx';
 import { levelContent, levelFrame } from './frames.ts';
@@ -155,7 +155,8 @@ function Level({ hardware }: { hardware: HwNode }) {
 
   // The kernel on the scene and the SMs its current wave occupies (task 5.3, ADR 0020).
   const kernelRef = useStore((s) => s.sceneKernel);
-  const kernel = plan ? sceneKernel(plan, kernelRef) : null;
+  const summary = useStore((s) => s.summary);
+  const kernel = plan ? sceneSubject(plan, kernelRef, summary) : null;
   const waves = kernel ? waveCount(kernel) : 1;
   const ticked = useWave((s) => s.wave);
   const wave = clampWave(ticked, waves);

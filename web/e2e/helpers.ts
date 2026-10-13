@@ -25,13 +25,13 @@ export async function setStoreState(page: Page, patch: Partial<StoreState>): Pro
   }, patch);
 }
 
-/** Polls until `pick(state)` is true, then returns the state (last state on timeout). */
+/** Polls (up to 15 s, for a loaded machine) until `pick(state)` is true, then returns the state (last state on timeout). */
 export async function waitForStore(
   page: Page,
   pick: (s: Partial<StoreState>) => boolean,
 ): Promise<Partial<StoreState>> {
   let state = await getStoreState(page);
-  for (let i = 0; i < 50 && !pick(state); i++) {
+  for (let i = 0; i < 150 && !pick(state); i++) {
     await page.waitForTimeout(100);
     state = await getStoreState(page);
   }

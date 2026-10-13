@@ -10,14 +10,16 @@ import { advance, kernelAt, kernelIndex, startOfKernel, timelineFor, waveAtProgr
 
 /** Writes the kernel and wave the playhead is on into the store. */
 function syncScene(): void {
-  const { plan, playhead, timeMode, focusLayer, sceneKernel, setSceneKernel } = useStore.getState();
+  const { plan, playhead, timeMode, focusLayer, sceneKernel, summary, setSceneKernel, setSummary } = useStore.getState();
   if (!plan) return;
   const under = kernelAt(plan, timelineFor(plan, timeMode, focusLayer), playhead);
   const kernel = under && plan.kernels[under.index];
   if (!under || !kernel) return;
   const ref = refOf(plan, kernel);
   if (!sameRef(ref, sceneKernel)) setSceneKernel(ref);
-  const wave = waveAtProgress(under.progress, waveCount(kernel));
+  if (summary?.layer !== under.summary?.layer || summary?.why !== under.summary?.why) setSummary(under.summary);
+  // A summary is one wave: it holds still (ADR 0024).
+  const wave = under.summary ? 0 : waveAtProgress(under.progress, waveCount(kernel));
   if (useWave.getState().wave !== wave) useWave.getState().setWave(wave);
 }
 

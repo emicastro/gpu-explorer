@@ -1,8 +1,8 @@
 // Where the playhead is on the step, and what the scene shows there (design
 // §6.5, ADR 0020). The pure part: no store, no clock.
 import type { StepPlan } from '../generated/StepPlan.ts';
-import { sceneKernel, type KernelRef } from '../plan/kernels.ts';
-import { buildTimeline, segmentAt, type Segment, type TimeMode } from '../timeline/timeline.ts';
+import { sceneKernel, type KernelRef, type SceneSummary } from '../plan/kernels.ts';
+import { buildTimeline, segmentAt, T_MIN, type Segment, type TimeMode } from '../timeline/timeline.ts';
 
 /** The speeds the transport offers (R10). */
 export const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
@@ -17,36 +17,35 @@ export function advance(t: number, dt: number, speed: number, total: number): { 
 
 /** The kernel under the playhead, and how far through it (0..1). */
 export interface Under {
-  /** Index into `plan.kernels`. */
+  /** Index into `plan.kernels`: for a summary, the layer's first kernel. */
   index: number;
   progress: number;
+  /** Set when the scene shows the layer's summary and not the kernel (ADR 0024). */
+  summary: SceneSummary | null;
 }
 
 /**
- * The kernel at time `t`. Inside a folded layer the segment's time is shared
- * out among its kernels by their GPU time, so the scene keeps animating.
+ * The kernel at time `t`. A folded layer, and a layer kernel shorter than
+ * `T_MIN` (Real mode), are too quick to show one by one: they come back as a
+ * summary of their layer, which holds still for the whole segment.
  */
 export function kernelAt(plan: StepPlan, segments: Segment[], t: number): Under | null {
   const s = segmentAt(segments, t);
   if (!s) return null;
   const f = s.duration > 0 ? clamp01((t - s.start) / s.duration) : 0;
-  if (s.kind === 'kernel') return { index: s.first, progress: f };
-  let left = f * s.real;
-  for (let i = s.first; i < s.end; i++) {
-    const real = plan.kernels[i]?.time.realistic.value ?? 0;
-    if (left < real || i === s.end - 1) return { index: i, progress: real > 0 ? clamp01(left / real) : 0 };
-    left -= real;
+  if (s.layer !== null) {
+    if (s.kind === 'layer') return { index: s.first, progress: f, summary: { layer: s.layer, why: 'folded' } };
+    if (s.duration < T_MIN - 1e-9) {
+      const first = plan.layers.find((l) => l.layer === s.layer)?.start ?? s.first;
+      return { index: first, progress: f, summary: { layer: s.layer, why: 'brief' } };
+    }
   }
-  return null;
+  return { index: s.first, progress: f, summary: null };
 }
 
-/** The axis time at which kernel `index` begins. */
-export function startOfKernel(plan: StepPlan, segments: Segment[], index: number): number {
-  const s = segments.find((x) => x.first <= index && index < x.end);
-  if (!s) return 0;
-  if (s.kind === 'kernel' || s.real <= 0) return s.start;
-  const before = plan.kernels.slice(s.first, index).reduce((sum, k) => sum + k.time.realistic.value, 0);
-  return s.start + (s.duration * before) / s.real;
+/** The axis time at which kernel `index` begins (a kernel in a folded layer: where the layer begins). */
+export function startOfKernel(_plan: StepPlan, segments: Segment[], index: number): number {
+  return segments.find((x) => x.first <= index && index < x.end)?.start ?? 0;
 }
 
 /** The wave a kernel of `waves` waves is on, `progress` (0..1) of the way through it. */

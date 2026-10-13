@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { HwNode, KernelPlan, Quantity, StepPlan } from '../core/index.ts';
-import { kernelLabel, kernelPlace, refOf, sameRef, sceneKernel, type KernelRef } from '../plan/kernels.ts';
+import { kernelLabel, kernelPlace, refOf, sameRef, sceneSubject, type KernelRef } from '../plan/kernels.ts';
 import { seekToKernel } from '../playback/driver.ts';
 import { nodeAtLevel } from '../scene/layout.ts';
 import { partColor, SM_BUSY_COLOR, smOccupancyColor } from '../scene/palette.ts';
@@ -70,6 +70,7 @@ function SplitKvLesson({ split, kernel, kvHeads, oneWave }: { split: SplitKv; ke
 export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads: Quantity }) {
   const plan = useStore((s) => s.plan);
   const ref = useStore((s) => s.sceneKernel);
+  const summary = useStore((s) => s.summary);
   const scenario = useStore((s) => s.scenario);
   const path = useStore((s) => s.path);
   const picks = useStore((s) => s.picks);
@@ -78,7 +79,7 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
   const slots = useMemo(() => smSlots(nodeAtLevel(hardware, 'die')), [hardware]);
   const options = useMemo(() => (plan ? pickable(plan) : []), [plan]);
 
-  const kernel = plan ? sceneKernel(plan, ref) : null;
+  const kernel = plan ? sceneSubject(plan, ref, summary) : null;
   if (!plan || !kernel || !settled || (path.length !== 1 && path.length !== 2)) return null;
   const waves = waveCount(kernel);
   const wave = clampWave(ticked, waves);
@@ -88,7 +89,8 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
   const gpcSms = gpcId ? slots.filter((s) => s.gpcId === gpcId && s.gpc === (picks[1] ?? 0)).length : 0;
   const split = splitKv(kernel, scenario.batch, kvHeads.value);
   // The ref may have fallen back to the default kernel: the picker shows the one on the scene.
-  const shown = refOf(plan, kernel);
+  // A summary is no kernel of the plan: the picker keeps the layer's first.
+  const shown = summary ? ref : refOf(plan, kernel);
   const current = options.find((o) => sameRef(o.ref, shown));
 
   return (
@@ -107,12 +109,18 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
           ))}
         </select>
       </label>
+      {summary ? (
+        <p>
+          <code>{kernel.name}</code> folded into one picture: the mean over its kernels, weighted by their time.
+        </p>
+      ) : (
+        <p>
+          <code>{kernel.name}</code> · <Q value={kernel.grid.blocks} /> blocks in <Q value={kernel.grid.waves} />{' '}
+          {waves === 1 ? 'wave' : 'waves'}
+        </p>
+      )}
       <p>
-        <code>{kernel.name}</code> · <Q value={kernel.grid.blocks} /> blocks in <Q value={kernel.grid.waves} />{' '}
-        {waves === 1 ? 'wave' : 'waves'}
-      </p>
-      <p>
-        Wave <span data-testid="occupancy-wave"><Num value={wave + 1} /></span> of <Num value={waves} />:{' '}
+        {summary ? 'On average' : <>Wave <span data-testid="occupancy-wave"><Num value={wave + 1} /></span> of <Num value={waves} /></>}:{' '}
         <strong data-testid="occupancy-busy"><Num value={busy.size} /></strong> of <Num value={slots.length} /> SMs busy
         (<Num value={Math.round((100 * busy.size) / slots.length)} />%)
       </p>
@@ -126,8 +134,8 @@ export function OccupancyCard({ hardware, kvHeads }: { hardware: HwNode; kvHeads
         <li><span style={{ background: smOccupancyColor(false) }} /> idle</li>
         <li><span style={{ background: partColor('sm', false) }} /> fused off</li>
       </ul>
-      {split && <SplitKvLesson split={split} kernel={kernel} kvHeads={kvHeads} oneWave={waves === 1} />}
-      {kernel.impl === 'fa3_combine' && (
+      {split && !summary && <SplitKvLesson split={split} kernel={kernel} kvHeads={kvHeads} oneWave={waves === 1} />}
+      {kernel.impl === 'fa3_combine' && !summary && (
         <p className="occupancy-note">
           Merges the partial results of the attention&apos;s <Q value={kernel.grid.splits} /> splits into one
           output per head.

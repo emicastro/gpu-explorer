@@ -1,6 +1,6 @@
 // Store shape (design §6.1, ADR 0004).
 import type { NavState } from '../nav/machine.ts';
-import type { KernelRef } from '../plan/kernels.ts';
+import type { KernelRef, SceneSummary } from '../plan/kernels.ts';
 import type { KvDtype } from '../generated/KvDtype.ts';
 import type { Phase } from '../generated/Phase.ts';
 import type { StepPlan } from '../generated/StepPlan.ts';
@@ -60,7 +60,13 @@ export interface PlaybackSlice {
    * playback driver writes it from the playhead (`playback/driver.ts`).
    */
   sceneKernel: KernelRef;
+  /**
+   * Set while the playhead is in a folded layer, or on a kernel too short to
+   * see: the scene then shows the layer's summary (ADR 0024).
+   */
+  summary: SceneSummary | null;
   setSceneKernel: (ref: KernelRef) => void;
+  setSummary: (summary: SceneSummary | null) => void;
   setPlayhead: (seconds: number) => void;
   setSpeed: (speed: number) => void;
   setTimeMode: (mode: TimeMode) => void;
