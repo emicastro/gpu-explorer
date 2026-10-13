@@ -48,6 +48,33 @@ describe('layoutPackage', () => {
     expect(new Set(ps.map((p) => p.key)).size).toBe(ps.length);
   });
 
+  it('keeps the real proportions: HBM pressed 0.75 mm from the die, all on the interposer (ADR 0021)', () => {
+    const ps = layoutPackage(pkg);
+    const [dieChip] = ofKind(ps, 'die');
+    const [interposer] = ofKind(ps, 'interposer');
+    const [substrate] = ofKind(ps, 'substrate');
+    if (!dieChip || !interposer || !substrate) throw new Error('missing part');
+    // Units per millimetre, from the die's documented area.
+    const perMm = Math.sqrt((dieChip.size[0] * dieChip.size[2]) / 814);
+    const left = (p: Placement) => p.position[0] - p.size[0] / 2;
+    const right = (p: Placement) => p.position[0] + p.size[0] / 2;
+    const hbm = ofKind(ps, 'hbm').filter((p) => p.position[0] > 0);
+    for (const h of hbm) {
+      expect((left(h) - right(dieChip)) / perMm).toBeCloseTo(0.75, 3);
+      expect(right(h)).toBeLessThan(right(interposer));
+      expect(h.position[1] + h.size[1] / 2).toBeCloseTo(dieChip.position[1] + dieChip.size[1] / 2);
+    }
+    expect(substrate.size[0] / perMm).toBeCloseTo(58.4, 3);
+  });
+
+  it('never overlaps two micro-bump pads', () => {
+    const pads = ofKind(layoutPackage(pkg), 'bumps');
+    const apart = (a: Placement, b: Placement, axis: 0 | 2) =>
+      Math.abs(a.position[axis] - b.position[axis]) >= (a.size[axis] + b.size[axis]) / 2;
+    for (const [i, a] of pads.entries())
+      for (const b of pads.slice(i + 1)) expect(apart(a, b, 0) || apart(a, b, 2)).toBe(true);
+  });
+
   it('only the die can be entered', () => {
     const entering = layoutPackage(pkg).filter((p) => p.enterId !== null);
     expect(entering.map((p) => p.enterId)).toEqual(['die']);

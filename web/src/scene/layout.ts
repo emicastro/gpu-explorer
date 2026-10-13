@@ -111,10 +111,34 @@ const HBM_ROWS = 3;
 
 /** The die level's own frame: its plate, in die-level units (see `layoutDie`). */
 const DIE_PLATE: Vec3 = [4.2, 0.1, 3.9];
+
+// Package footprints in millimetres (ADR 0021). The die area is documented
+// (814 mm², Hopper whitepaper), and its aspect is the die plate's. The rest is
+// estimated from the ServeTheHome photos of the H100 SXM5.
+const DIE_AREA_MM2 = 814;
+const DIE_W_MM = Math.sqrt((DIE_AREA_MM2 * DIE_PLATE[0]) / DIE_PLATE[2]);
+const DIE_D_MM = DIE_AREA_MM2 / DIE_W_MM;
+const HBM_W_MM = 9.6;
+const HBM_D_MM = 10.6;
+const DIE_HBM_GAP_MM = 0.75;
+const HBM_GAP_MM = 0.55;
+const SUBSTRATE_W_MM = 58.4;
+const SUBSTRATE_D_MM = 55.2;
+const STIFFENER_OPENING_MM = [52.4, 38.6] as const;
+/** The interposer: the chips' bounding box plus this margin (`simplified`). */
+const INTERPOSER_MARGIN_MM = 1;
+
 /** The die on the package: same footprint as the die level's plate, scaled down. */
 const PACKAGE_DIE_WIDTH = 1.2;
-const PACKAGE_DIE: Vec3 = [PACKAGE_DIE_WIDTH, 0.3, (PACKAGE_DIE_WIDTH * DIE_PLATE[2]) / DIE_PLATE[0]];
-const PACKAGE_DIE_Y = 0.1;
+/** Package units per millimetre, chosen so the die keeps its width. */
+const MM = PACKAGE_DIE_WIDTH / DIE_W_MM;
+const INTERPOSER_TOP = -0.05;
+/**
+ * Chips are about 3 times their real 0.78 mm thickness (`simplified`), so
+ * their sides still show; the HBM tops sit flush with the die's.
+ */
+const PACKAGE_DIE: Vec3 = [PACKAGE_DIE_WIDTH, 0.1, DIE_D_MM * MM];
+const PACKAGE_DIE_Y = INTERPOSER_TOP + PACKAGE_DIE[1] / 2;
 
 /**
  * Where the die level sits in the package's frame: scaled so its plate covers
@@ -126,9 +150,8 @@ export const DIE_FRAME = {
   position: [0, PACKAGE_DIE_Y + PACKAGE_DIE[1] / 2, 0] as Vec3,
 };
 
-/** How far the gold micro-bump fringe shows around a chip on the interposer. */
-const BUMP_FRINGE = 0.04;
-const INTERPOSER_TOP = -0.05;
+/** How far the gold micro-bump fringe shows around a chip: under half the die–HBM gap, so pads never overlap. */
+const BUMP_FRINGE = 0.3 * DIE_HBM_GAP_MM * MM;
 
 /** A chip's micro-bump pad: under it on the interposer, a little wider, never clickable. */
 function bumpPad(chip: Placement): Placement {
@@ -138,9 +161,20 @@ function bumpPad(chip: Placement): Placement {
     [w + 2 * BUMP_FRINGE, 0.012, d + 2 * BUMP_FRINGE], chip.enabled);
 }
 
-const SUBSTRATE: Vec3 = [4, 0.12, 3.2];
-const STIFFENER_WIDTH = 0.12;
+const SUBSTRATE: Vec3 = [SUBSTRATE_W_MM * MM, 0.12, SUBSTRATE_D_MM * MM];
+/** The stiffener ring is wider front and back than on the sides, around its opening. */
+const STIFFENER_SIDE = ((SUBSTRATE_W_MM - STIFFENER_OPENING_MM[0]) / 2) * MM;
+const STIFFENER_END = ((SUBSTRATE_D_MM - STIFFENER_OPENING_MM[1]) / 2) * MM;
 const STIFFENER_HEIGHT = 0.06;
+/** Centre of an HBM column, and the pitch between the stacks in it. */
+const HBM_X = (DIE_W_MM / 2 + DIE_HBM_GAP_MM + HBM_W_MM / 2) * MM;
+const HBM_PITCH = (HBM_D_MM + HBM_GAP_MM) * MM;
+const HBM: Vec3 = [HBM_W_MM * MM, PACKAGE_DIE[1], HBM_D_MM * MM];
+const INTERPOSER: Vec3 = [
+  (DIE_W_MM + 2 * (DIE_HBM_GAP_MM + HBM_W_MM + INTERPOSER_MARGIN_MM)) * MM,
+  0.1,
+  (HBM_ROWS * HBM_D_MM + (HBM_ROWS - 1) * HBM_GAP_MM + 2 * INTERPOSER_MARGIN_MM) * MM,
+];
 
 /**
  * Package: the substrate with its metal stiffener frame, the interposer on it,
@@ -158,19 +192,19 @@ export function layoutPackage(pkg: HwNode): Placement[] {
   const [sw, , sd] = SUBSTRATE;
   const out: Placement[] = [
     part('substrate', pkg.id, 0, [0, substrateTop - SUBSTRATE[1] / 2, 0], SUBSTRATE),
-    part('stiffener', pkg.id, 0, [0, frameY, -(sd - STIFFENER_WIDTH) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_WIDTH]),
-    part('stiffener', pkg.id, 1, [0, frameY, (sd - STIFFENER_WIDTH) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_WIDTH]),
-    part('stiffener', pkg.id, 2, [-(sw - STIFFENER_WIDTH) / 2, frameY, 0], [STIFFENER_WIDTH, STIFFENER_HEIGHT, sd - 2 * STIFFENER_WIDTH]),
-    part('stiffener', pkg.id, 3, [(sw - STIFFENER_WIDTH) / 2, frameY, 0], [STIFFENER_WIDTH, STIFFENER_HEIGHT, sd - 2 * STIFFENER_WIDTH]),
-    part('interposer', pkg.id, 0, [0, INTERPOSER_TOP - 0.05, 0], [3, 0.1, 2.2]),
+    part('stiffener', pkg.id, 0, [0, frameY, -(sd - STIFFENER_END) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_END]),
+    part('stiffener', pkg.id, 1, [0, frameY, (sd - STIFFENER_END) / 2], [sw, STIFFENER_HEIGHT, STIFFENER_END]),
+    part('stiffener', pkg.id, 2, [-(sw - STIFFENER_SIDE) / 2, frameY, 0], [STIFFENER_SIDE, STIFFENER_HEIGHT, sd - 2 * STIFFENER_END]),
+    part('stiffener', pkg.id, 3, [(sw - STIFFENER_SIDE) / 2, frameY, 0], [STIFFENER_SIDE, STIFFENER_HEIGHT, sd - 2 * STIFFENER_END]),
+    part('interposer', pkg.id, 0, [0, INTERPOSER_TOP - INTERPOSER[1] / 2, 0], INTERPOSER),
   ];
   const chips: Placement[] = [part('die', die.id, 0, [0, PACKAGE_DIE_Y, 0], PACKAGE_DIE, true, true)];
   for (const i of range(sites)) {
     const column = Math.floor(i / HBM_ROWS);
     const row = i % HBM_ROWS;
-    const x = column === 0 ? -1.1 : 1.1;
-    const z = (row - (HBM_ROWS - 1) / 2) * 0.68;
-    chips.push(part('hbm', hbm.id, i, [x, 0.05, z], [0.4, 0.2, 0.6], i < active));
+    const x = column === 0 ? -HBM_X : HBM_X;
+    const z = (row - (HBM_ROWS - 1) / 2) * HBM_PITCH;
+    chips.push(part('hbm', hbm.id, i, [x, PACKAGE_DIE_Y, z], HBM, i < active));
   }
   return [...out, ...chips.map(bumpPad), ...chips];
 }

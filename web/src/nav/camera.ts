@@ -11,8 +11,8 @@ export interface Pose {
 /** Flight time between levels, in seconds (design §6.2: ~600 ms). */
 export const TRANSITION_SECONDS = 0.6;
 
-/** The package seen whole: the only pose in world units. */
-export const OVERVIEW_POSE: Pose = { position: [3.6, 3.6, 3.6], target: [0, 0, 0] };
+/** The package seen whole: the only pose in world units, framed for its real size (ADR 0021). */
+export const OVERVIEW_POSE: Pose = { position: [2.3, 2.3, 2.3], target: [0, 0, 0] };
 
 /**
  * The resting camera of each level below the package, in the level's own
