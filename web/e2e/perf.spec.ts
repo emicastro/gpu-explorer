@@ -5,17 +5,22 @@ import { getRenderInfo, setStoreState, waitForStore } from './helpers.ts';
 const MAX_DRAW_CALLS = 200;
 const MAX_TRIANGLES = 500_000;
 
-const GPC = 'gpc-8tpc';
-const SM = `${GPC}/tpc/sm`;
-const SUB = `${SM}/subpartition`;
+/** The levels under one GPC variant; the die has GPCs of 8 and of 9 TPCs. */
+const underGpc = (gpc: string) => {
+  const sm = `${gpc}/tpc/sm`;
+  return [
+    { name: gpc, path: ['die', gpc], picks: [0, 0] },
+    { name: `${gpc} SM`, path: ['die', gpc, sm], picks: [0, 0, 0] },
+    { name: `${gpc} sub-partition`, path: ['die', gpc, sm, `${sm}/subpartition`], picks: [0, 0, 0, 0] },
+  ];
+};
 
 /** Every level, reached through the store: the path and the instance picked at each step. */
 const LEVELS = [
   { name: 'package', path: [] as string[], picks: [] as number[] },
   { name: 'die', path: ['die'], picks: [0] },
-  { name: 'GPC', path: ['die', GPC], picks: [0, 0] },
-  { name: 'SM', path: ['die', GPC, SM], picks: [0, 0, 0] },
-  { name: 'sub-partition', path: ['die', GPC, SM, SUB], picks: [0, 0, 0, 0] },
+  ...underGpc('gpc-8tpc'),
+  ...underGpc('gpc-9tpc'),
 ];
 
 test('every level stays within the frame budget', async ({ page }) => {
@@ -31,11 +36,16 @@ test('every level stays within the frame budget', async ({ page }) => {
   await page.waitForTimeout(500);
 
   const seen: string[] = [];
+  let from: string[] = [];
   for (const level of LEVELS) {
-    await setStoreState(page, { path: level.path, picks: level.picks, from: null });
-    await waitForStore(page, (s) => s.path?.length === level.path.length && s.from === null);
-    // Let the camera settle and a few frames render at the new level.
-    await page.waitForTimeout(1_500);
+    // A non-null `from` starts a flight, as the navigation reducer would; the
+    // scene clears it on landing, which is when the new level mounts.
+    await setStoreState(page, { path: level.path, picks: level.picks, from });
+    const landed = await waitForStore(page, (s) => s.from === null);
+    expect(landed.from, `${level.name}: the flight did not land`).toBeNull();
+    from = level.path;
+    // A few frames at the new level, so the counts are its own.
+    await page.waitForTimeout(200);
     const info = await getRenderInfo(page);
     seen.push(`${level.name}: ${JSON.stringify(info)}`);
     expect(info.calls, `${level.name} draw calls`).toBeGreaterThan(0);
