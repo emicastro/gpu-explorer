@@ -26,8 +26,9 @@ test('the panel of an SM shows its specs and the plan\'s numbers for the kernel 
   await expect(panel).toBeVisible();
   await expect(panel.getByRole('heading', { name: /^SM/ })).toBeVisible();
   await expect(panel).toContainText('Max warps');
-  // The prose is the SM's file under content/components/ (R9), terms marked.
-  await expect(panel).toContainText('What it does: The unit that runs thread blocks');
+  // The prose is the SM's file under content/components/ (R9), in its sections (ADR 0026), terms marked.
+  await expect(panel).toContainText('The SM is where a kernel\'s math actually happens');
+  await expect(panel.getByRole('heading', { name: 'In a decode step' })).toBeVisible();
   await expect(panel.locator('.term[data-term="thread-block"]').first()).toBeVisible();
   await expect(panel).toContainText('64');
 

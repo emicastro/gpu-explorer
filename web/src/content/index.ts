@@ -18,9 +18,17 @@ export interface GlossaryEntry {
 export interface ComponentEntry {
   /** The `contentId` of the hardware nodes it describes. */
   id: string;
+  /** The tooltip text. */
   does: Inline[];
   stores: Inline[];
-  body: Block[];
+  /** What it is: the body before the first heading. */
+  intro: Block[];
+  /** The `## Why it exists` section. */
+  why: Block[];
+  /** The `## In a decode step` section. */
+  decode: Block[];
+  /** The optional `## Think of it as` section. */
+  analogy: Block[] | null;
 }
 
 export interface Content {
@@ -52,6 +60,42 @@ function list(data: Fields, key: string, file: string, problems: string[]): stri
   return [];
 }
 
+// The headings a component body may have, and the field each fills (ADR 0026).
+const SECTIONS = { 'Why it exists': 'why', 'In a decode step': 'decode', 'Think of it as': 'analogy' } as const;
+type Section = (typeof SECTIONS)[keyof typeof SECTIONS];
+const HEADING = /^##\s+(.*?)\s*$/;
+
+/** Split a component body into its intro and its `##` sections, collecting what is wrong with them. */
+function sections(body: string, file: string, problems: string[]): Pick<ComponentEntry, 'intro' | Section> {
+  const lines: Partial<Record<'intro' | Section, string[]>> = { intro: [] };
+  let current = lines.intro;
+  for (const line of body.split(/\r?\n/)) {
+    const h = HEADING.exec(line);
+    if (!h) {
+      current?.push(line);
+      continue;
+    }
+    const title = h[1] ?? '';
+    const key = Object.hasOwn(SECTIONS, title) ? SECTIONS[title as keyof typeof SECTIONS] : null;
+    current = undefined;
+    if (key === null) problems.push(`${file}: unknown heading "## ${title}" (expected one of: ${Object.keys(SECTIONS).join(', ')})`);
+    else if (lines[key]) problems.push(`${file}: the heading "## ${title}" appears twice`);
+    else lines[key] = current = [];
+  }
+  const parse = (key: 'intro' | Section) => {
+    const src = lines[key];
+    return src ? parseMarkdown(src.join('\n')) : null;
+  };
+  const intro = parse('intro') ?? [];
+  if (intro.length === 0) problems.push(`${file}: the intro before the first heading is empty`);
+  const got = { why: parse('why'), decode: parse('decode'), analogy: parse('analogy') };
+  for (const [title, key] of Object.entries(SECTIONS)) {
+    if (got[key] === null && key !== 'analogy') problems.push(`${file}: no "## ${title}" section`);
+    else if (got[key]?.length === 0) problems.push(`${file}: the "## ${title}" section is empty`);
+  }
+  return { intro, why: got.why ?? [], decode: got.decode ?? [], analogy: got.analogy };
+}
+
 /** Parse `files` (path → raw text) into entries, collecting what is wrong with them. */
 export function readContent(files: Readonly<Record<string, string>>): Content {
   const glossary = new Map<string, GlossaryEntry>();
@@ -78,10 +122,9 @@ export function readContent(files: Readonly<Record<string, string>>): Content {
     }
     const id = text(data, 'id', file, problems);
     if (id !== '' && id !== slug) problems.push(`${file}: id "${id}" does not match the file name`);
-    const blocks = parseMarkdown(body);
-    if (blocks.length === 0) problems.push(`${file}: the body is empty`);
-
     if (dir === 'glossary') {
+      const blocks = parseMarkdown(body);
+      if (blocks.length === 0) problems.push(`${file}: the body is empty`);
       glossary.set(slug, {
         id,
         name: text(data, 'name', file, problems),
@@ -95,7 +138,7 @@ export function readContent(files: Readonly<Record<string, string>>): Content {
         id,
         does: parseInline(text(data, 'does', file, problems)),
         stores: parseInline(text(data, 'stores', file, problems)),
-        body: blocks,
+        ...sections(body, file, problems),
       });
     }
   }
@@ -119,7 +162,8 @@ export function crossProblems(content: Content, treeIds: readonly string[], extr
     for (const id of e.related) if (!content.glossary.has(id)) problems.push(`${where}: related term "${id}" does not exist`);
   }
   for (const [slug, e] of content.components) {
-    unknown(`components/${slug}`, [...termsInInline(e.does), ...termsInInline(e.stores), ...termsInBlocks(e.body)]);
+    const blocks = [...e.intro, ...e.why, ...e.decode, ...(e.analogy ?? [])];
+    unknown(`components/${slug}`, [...termsInInline(e.does), ...termsInInline(e.stores), ...termsInBlocks(blocks)]);
     if (!contentIds.includes(slug)) problems.push(`components/${slug}: orphan, no node of the hardware tree has this contentId`);
   }
   for (const id of contentIds) if (!content.components.has(id)) problems.push(`components/${id}: no prose for this component of the hardware tree`);

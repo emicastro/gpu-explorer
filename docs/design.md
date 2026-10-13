@@ -323,7 +323,7 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 ## 7. Glosario y contenido (R15, R9; ADR 0005)
 
 - `content/glossary/<id>.md`: el frontmatter trae `id`, `name`, `short`, `related` y `sources`; el cuerpo es la definición larga.
-- `content/components/<contentId>.md`: el frontmatter trae `id`, `does`, `stores`; el cuerpo es la prosa.
+- `content/components/<contentId>.md`: el frontmatter trae `id`, `does` (el tooltip) y `stores`. El cuerpo empieza con la introducción (qué es) y sigue con las secciones `## Why it exists`, `## In a decode step` y, opcional, `## Think of it as` (R22, ADR 0026).
 - Parser: separar el frontmatter y leerlo con `yaml`. Renderer de un subconjunto chico de Markdown más `[[id]]` y `[[id|texto]]`.
 - **Tooltips:** una pila de tooltips abiertos.
   - Se abren con hover de 600 ms o con foco.
@@ -331,7 +331,7 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
   - Un tooltip fijado acepta hover adentro, y desde ahí se abren los anidados.
   - `Escape` cierra el último.
   - El 3D usa el mismo componente, anclado al puntero.
-- **Test de contenido:** todo `[[id]]` existe; todo componente del árbol tiene su archivo; no hay archivos huérfanos. Los términos del glosario de trabajo (`docs/GLOSSARY.md`, en español) son la semilla del glosario del sitio en inglés, pero no se sincronizan.
+- **Test de contenido:** todo `[[id]]` existe; todo componente del árbol tiene su archivo; no hay archivos huérfanos; cada componente tiene introducción y sus secciones obligatorias, sin encabezados desconocidos ni repetidos. Los términos del glosario de trabajo (`docs/GLOSSARY.md`, en español) son la semilla del glosario del sitio en inglés, pero no se sincronizan.
 
 ## 8. Producto (R17, R18, R20)
 

@@ -4,7 +4,7 @@ import { hardware, initCoreSync, type HwNode } from '../core/index.ts';
 import { splitFrontmatter } from './frontmatter.ts';
 import { EXTRA_PART_IDS } from '../scene/parts.ts';
 import { content, crossProblems, readContent } from './index.ts';
-import { parseInline, parseMarkdown, termsInBlocks } from './markdown.ts';
+import { parseInline, parseMarkdown, termsInBlocks, type Block } from './markdown.ts';
 
 let contentIds: string[];
 
@@ -32,6 +32,7 @@ describe('content files', () => {
 
 describe('content checks catch what is wrong', () => {
   const term = (extra: string, body = 'Body.') => `---\nid: t\nname: T\nshort: s\nrelated: []\nsources: []\n${extra}---\n\n${body}\n`;
+  const sections = '\n\n## Why it exists\n\nW.\n\n## In a decode step\n\nD.';
   const check = (files: Record<string, string>, ids: string[] = [], extras: string[] = []) => {
     const c = readContent(files);
     return [...c.problems, ...crossProblems(c, ids, extras)];
@@ -54,7 +55,7 @@ describe('content checks catch what is wrong', () => {
       'content/glossary/a.md': '---\nid: a\nname: A\n---\n\nBody.\n',
       'content/glossary/b.md': term('').replace('id: t', 'id: other'),
       'content/glossary/c.md': term('', '').replace('id: t', 'id: c'),
-      'content/components/sm.md': '---\nid: sm\ndoes: x\n---\n\nBody.\n',
+      'content/components/sm.md': `---\nid: sm\ndoes: x\n---\n\nBody.${sections}\n`,
       'content/glossary/d.md': 'no frontmatter',
     }, ['sm']);
     expect(got).toEqual([
@@ -68,12 +69,39 @@ describe('content checks catch what is wrong', () => {
     ]);
   });
 
+  it('a component without its intro or a required section, with an empty, unknown or repeated heading, or an unknown term in a section', () => {
+    const entry = (id: string, body: string) => `---\nid: ${id}\ndoes: d\nstores: s\n---\n\n${body}\n`;
+    const got = check({
+      'content/components/a.md': entry('a', '## Why it exists\n\nW.\n\n## In a decode step\n\nSee [[nope]].'),
+      'content/components/b.md': entry('b', 'Intro.\n\n## Why it exists\n\nW.'),
+      'content/components/c.md': entry('c', `Intro.${sections}\n\n## Think of it as\n\n## History\n\nH.`),
+      'content/components/d.md': entry('d', `Intro.${sections}\n\n## Why it exists\n\nAgain.`),
+    }, ['a', 'b', 'c', 'd']);
+    expect(got).toEqual([
+      'content/components/a.md: the intro before the first heading is empty',
+      'content/components/b.md: no "## In a decode step" section',
+      'content/components/c.md: unknown heading "## History" (expected one of: Why it exists, In a decode step, Think of it as)',
+      'content/components/c.md: the "## Think of it as" section is empty',
+      'content/components/d.md: the heading "## Why it exists" appears twice',
+      'components/a: unknown term [[nope]]',
+    ]);
+  });
+
+  it('a component\'s sections land in their fields, whatever their order', () => {
+    const c = readContent({ 'content/components/a.md': '---\nid: a\ndoes: d\nstores: s\n---\n\nWhat.\n\n## Think of it as\n\nLike.\n\n## In a decode step\n\nDecode.\n\n## Why it exists\n\nWhy.\n' });
+    expect(c.problems).toEqual([]);
+    const a = c.components.get('a');
+    const text = (blocks: Block[] | null | undefined) => blocks?.map((b) => (b.kind === 'paragraph' ? b.children.map((n) => (n.kind === 'text' ? n.text : '')).join('') : '')).join('|');
+    expect([text(a?.intro), text(a?.why), text(a?.decode), text(a?.analogy)]).toEqual(['What.', 'Why.', 'Decode.', 'Like.']);
+    expect(readContent({ 'content/components/a.md': `---\nid: a\ndoes: d\nstores: s\n---\n\nWhat.${sections}\n` }).components.get('a')?.analogy).toBeNull();
+  });
+
   it('an extra part without its prose file', () => {
     expect(check({}, [], ['substrate'])).toEqual(['components/substrate: no prose for this component of the hardware tree']);
   });
 
   it('a component of the tree without prose, and prose that is no component', () => {
-    const entry = (id: string) => `---\nid: ${id}\ndoes: d\nstores: s\n---\n\nBody.\n`;
+    const entry = (id: string) => `---\nid: ${id}\ndoes: d\nstores: s\n---\n\nBody.${sections}\n`;
     expect(check({ 'content/components/sm.md': entry('sm'), 'content/components/ghost.md': entry('ghost') }, ['sm', 'l2'])).toEqual([
       'components/ghost: orphan, no node of the hardware tree has this contentId',
       'components/l2: no prose for this component of the hardware tree',

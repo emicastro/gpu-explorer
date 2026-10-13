@@ -1,5 +1,6 @@
 import type { HwNode } from '../core/index.ts';
 import { InlineText, Prose } from '../content/Prose.tsx';
+import type { Block } from '../content/markdown.ts';
 import { sceneSubject } from '../plan/kernels.ts';
 import { findNode, nodeAtLevel } from '../scene/layout.ts';
 import { findPart } from '../scene/parts.ts';
@@ -48,8 +49,18 @@ function Facts({ title, facts }: { title: string; facts: Fact[] }) {
   );
 }
 
+function ProseSection({ title, blocks }: { title: string; blocks: Block[] }) {
+  return (
+    <section>
+      <h3>{title}</h3>
+      <Prose blocks={blocks} />
+    </section>
+  );
+}
+
 /**
- * The panel of a component (design §6.4, R9): what it is, its numbers, and what
+ * The panel of a component (design §6.4, R9, R22): what it is, why it exists and
+ * what it does in decode (ADR 0026), its numbers, and what
  * the LLM does there for the kernel on the scene. It opens for the level you
  * are on, and the parts inside it are listed to open in turn: no raycast on
  * detail (ADR 0017), and no click taken from entering a level.
@@ -83,9 +94,11 @@ export function ComponentPanel({ hardware }: { hardware: HwNode }) {
       </header>
       {prose && (
         <div className="panel-prose">
-          <p><strong>What it does:</strong> <InlineText nodes={prose.does} /></p>
+          <Prose blocks={prose.intro} />
           <p><strong>What it stores:</strong> <InlineText nodes={prose.stores} /></p>
-          <Prose blocks={prose.body} />
+          <ProseSection title="Why it exists" blocks={prose.why} />
+          <ProseSection title="In a decode step" blocks={prose.decode} />
+          {prose.analogy && <ProseSection title="Think of it as" blocks={prose.analogy} />}
         </div>
       )}
       <Facts title="Specs (one instance)" facts={specFacts(open)} />
