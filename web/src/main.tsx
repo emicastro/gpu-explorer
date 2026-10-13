@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
-import { evaluate, hardware, initCore } from './core/index.ts';
+import { evaluate, hardware, initCore, models } from './core/index.ts';
 import './index.css';
 import { toScenario, useStore } from './state/store.ts';
 import { installTestHook } from './state/testHook.ts';
@@ -17,10 +17,13 @@ if (import.meta.env.MODE === 'test') {
 }
 
 await initCore();
-useStore.getState().setEvaluator((knobs) => evaluate('h100-sxm', 'qwen3-8b', toScenario(knobs)));
+const MODEL = 'qwen3-8b';
+const model = models().find((m) => m.id === MODEL);
+if (!model) throw new Error(`the core has no ${MODEL} preset`);
+useStore.getState().setEvaluator((knobs) => evaluate('h100-sxm', MODEL, toScenario(knobs)));
 
 createRoot(root).render(
   <StrictMode>
-    <App hardware={hardware('h100-sxm')} />
+    <App hardware={hardware('h100-sxm')} model={model} />
   </StrictMode>,
 );

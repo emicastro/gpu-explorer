@@ -1,6 +1,6 @@
 import { Environment, Lightformer, OrbitControls, PerformanceMonitor } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { PerspectiveCamera, type Group, type Vector3 } from 'three';
 import {
   clipPlanes,
@@ -16,13 +16,15 @@ import {
 } from '../nav/camera.ts';
 import { useStore } from '../state/store.ts';
 import type { HwNode } from '../core/index.ts';
-import { FLOW_OP, findKernel } from '../flow/flow.ts';
+import { busySmKeys, smOccupancy, smSlots, waveCount } from '../occupancy/occupancy.ts';
+import { clampWave, useWave, waveAt } from '../occupancy/wave.ts';
+import { sceneKernel } from '../plan/kernels.ts';
 import { Flow } from './Flow.tsx';
 import { Labels } from './Labels.tsx';
 import { levelContent, levelFrame } from './frames.ts';
-import { DIE_FRAME, layoutDie, layoutPackage, nodeAtLevel } from './layout.ts';
+import { DIE_FRAME, layoutDie, layoutPackage, nodeAtLevel, type Placement } from './layout.ts';
 import { createMaterials, type MaterialSet } from './materials.ts';
-import { LIGHT_COLORS, SCENE_BACKGROUND } from './palette.ts';
+import { LIGHT_COLORS, SCENE_BACKGROUND, smOccupancyColor } from './palette.ts';
 import { Parts } from './Parts.tsx';
 import { useRenderInfoProbe } from './renderInfo.ts';
 
@@ -46,6 +48,29 @@ function useMaterials(fades: boolean): MaterialSet {
   useEffect(() => () => { set.dispose(); }, [set]);
   return set;
 }
+
+/**
+ * The scene's wave clock (ADR 0020): seconds since the kernel came on, and the
+ * wave they fall in. Mounted per kernel, so a new kernel starts at wave 0. The
+ * flow reads the same seconds, so its pulses start with the waves.
+ */
+function WaveTicker({ waves, clockRef }: { waves: number; clockRef: RefObject<number> }) {
+  const setWave = useWave((s) => s.setWave);
+  useEffect(() => {
+    clockRef.current = 0;
+    setWave(0);
+  }, [clockRef, setWave]);
+  useFrame((_, delta) => {
+    clockRef.current += delta;
+    const wave = waveAt(clockRef.current, waves);
+    if (useWave.getState().wave !== wave) setWave(wave);
+  });
+  return null;
+}
+
+/** Lights the enabled SMs in `busy`, dims the other enabled ones; leaves every other part alone. */
+const occupancyColors = (busy: Set<string> | null) => (p: Placement): string | undefined =>
+  busy && p.kind === 'sm' && p.enabled ? smOccupancyColor(busy.has(p.key)) : undefined;
 
 /**
  * The current level's parts. Flies the camera and fades the siblings when the
@@ -130,7 +155,26 @@ function Level({ hardware }: { hardware: HwNode }) {
   );
   const showPackage = depth === 0;
   const showDie = depth === 1;
-  const flowKernel = plan ? findKernel(plan, FLOW_OP) : null;
+  const showGpc = depth === 2;
+
+  // The kernel on the scene and the SMs its current wave occupies (task 5.3, ADR 0020).
+  const kernelRef = useStore((s) => s.sceneKernel);
+  const kernel = plan ? sceneKernel(plan, kernelRef) : null;
+  const waves = kernel ? waveCount(kernel) : 1;
+  const ticked = useWave((s) => s.wave);
+  const wave = clampWave(ticked, waves);
+  const clockRef = useRef(0);
+  const slots = useMemo(() => smSlots(nodeAtLevel(hardware, 'die')), [hardware]);
+  const busy = useMemo(() => (kernel ? smOccupancy(kernel, wave, slots.length) : null), [kernel, wave, slots]);
+  const dieBusy = useMemo(() => (busy ? busySmKeys(slots, busy) : null), [busy, slots]);
+  const gpcId = showGpc ? shownPath[1] : undefined;
+  const gpcPick = shownPicks[1] ?? 0;
+  const gpcBusy = useMemo(
+    () => (busy && gpcId ? busySmKeys(slots, busy, { gpcId, gpc: gpcPick }) : null),
+    [busy, slots, gpcId, gpcPick],
+  );
+  const dieColors = useMemo(() => occupancyColors(dieBusy), [dieBusy]);
+  const gpcColors = useMemo(() => occupancyColors(gpcBusy), [gpcBusy]);
   return (
     <>
       {showPackage && (
@@ -149,15 +193,21 @@ function Level({ hardware }: { hardware: HwNode }) {
           />
         </>
       )}
+      {kernel && (showDie || showGpc) && <WaveTicker key={kernel.id} waves={waves} clockRef={clockRef} />}
       {showDie && (
         <group position={[...DIE_FRAME.position]} scale={DIE_FRAME.scale}>
-          <Parts placements={dieParts} materials={solidMaterials} onEnter={enter} />
-          {flowKernel && <Flow kernel={flowKernel} dieParts={dieParts} />}
+          <Parts placements={dieParts} materials={solidMaterials} onEnter={enter} colorOf={dieColors} />
+          {kernel && dieBusy && <Flow kernel={kernel} dieParts={dieParts} busy={dieBusy} clockRef={clockRef} />}
         </group>
       )}
       {deep && (
         <group position={[...deep.frame.position]} scale={deep.frame.scale}>
-          <Parts placements={deep.placements} materials={solidMaterials} onEnter={enter} />
+          <Parts
+            placements={deep.placements}
+            materials={solidMaterials}
+            onEnter={enter}
+            colorOf={showGpc ? gpcColors : undefined}
+          />
         </group>
       )}
       {/* Labels stay mounted and toggle: their DOM overlay outlives the levels' meshes. */}

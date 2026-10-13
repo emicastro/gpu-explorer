@@ -1,5 +1,6 @@
 // Store shape (design §6.1, ADR 0004).
 import type { NavState } from '../nav/machine.ts';
+import type { KernelRef } from '../plan/kernels.ts';
 import type { KvDtype } from '../generated/KvDtype.ts';
 import type { Phase } from '../generated/Phase.ts';
 import type { StepPlan } from '../generated/StepPlan.ts';
@@ -52,6 +53,12 @@ export interface PlaybackSlice {
   speed: number;
   timeMode: TimeMode;
   playing: boolean;
+  /**
+   * The kernel the scene, the flow label and the panel show (ADR 0020). Task
+   * 6.2 sets it from the playhead; until then the occupancy card's picker does.
+   */
+  sceneKernel: KernelRef;
+  setSceneKernel: (ref: KernelRef) => void;
   setPlayhead: (seconds: number) => void;
   setSpeed: (speed: number) => void;
   setTimeMode: (mode: TimeMode) => void;

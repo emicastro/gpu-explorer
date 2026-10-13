@@ -17,6 +17,15 @@ describe('store slices', () => {
     expect(s.selection).toBeNull();
     expect(s.path).toEqual([]);
     expect(s.playing).toBe(false);
+    expect(s.sceneKernel).toEqual({ op: { kind: 'qkv_proj', layer: 0 }, nth: 0 });
+  });
+
+  it('keeps the scene kernel across a re-evaluation and a panel', () => {
+    const attention = { op: { kind: 'attention' as const, layer: 0 }, nth: 0 };
+    useStore.getState().setSceneKernel(attention);
+    useStore.getState().setScenario({ batch: 8 });
+    useStore.getState().select({ kind: 'component', id: 'die' });
+    expect(useStore.getState().sceneKernel).toEqual(attention);
   });
 
   it('re-evaluates synchronously on a scenario change and replaces the plan', () => {

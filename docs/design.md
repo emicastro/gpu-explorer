@@ -160,7 +160,7 @@ Un módulo por `impl` bajo `tiling/`. Cada uno devuelve un `Launch { blocks, til
   - Registros y shared memory de `combine`, `prepare` y los kernels de `engine` no están citados, así que `slots` cuenta solo el límite de hilos (ADR 0013).
 - Kernels no persistentes: `slots = SMs × CTAs por SM`, el mínimo de los límites de hilos, bloques, registros y shared memory del SM (`tiling::Sm`, ADR 0013).
 - Kernels persistentes (FA3 varlen, DeepGEMM, FlashInfer): grid de 132 CTAs. Las "ondas" son las rondas de tiles que reparte el scheduler: `ondas = ⌈tiles / 132⌉`.
-- `per_wave[i]` = tiles activos en la ronda `i`. El 3D asigna tiles a SMs en orden de índice de SM. El scheduler real no es determinista, así que esa asignación es `simplified`.
+- `per_wave[i]` = tiles activos en la ronda `i`. El 3D asigna tiles a SMs en orden de índice de SM, con el orden físico de la [ADR 0020](adr/0020-sm-order-and-scene-kernel.md). El scheduler real no es determinista, así que esa asignación es `simplified`.
 
 ### 4.4 Tiempo realista (R4)
 
@@ -267,7 +267,10 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 
 ### 6.6 Mapeo a SMs y flujo de datos (R11)
 
-- `smOccupancy(kernel, wave) -> Set<smIndex>` es una función pura (§4.3).
+- `smOccupancy(kernel, wave, sms) -> Set<smIndex>` es una función pura (§4.3): los primeros `min(per_wave[wave], sms)` SMs lógicos.
+- **Orden de los SMs** ([ADR 0020](adr/0020-sm-order-and-scene-kernel.md), `simplified`): el SM lógico `i` cae round-robin sobre los 8 GPCs (salteando los llenos) y, dentro de cada GPC, en el orden del layout. A batch 1 y 8k, la atención ocupa 13 SMs de cada GPC. Código en `web/src/occupancy/`: `occupancy.ts` (orden, ocupación, claves de las placements, números de split-KV), `wave.ts` (la onda actual) y `OccupancyCard.tsx`.
+- **Kernel de la escena** (ADR 0020): `sceneKernel` en el slice de reproducción, un `KernelRef` (primera op del kernel y `nth` entre los kernels que la corren). Lo leen la escena, `FlowLabel` y el panel. Hasta la 6.2 lo elige un selector en la tarjeta de ocupación; por defecto es la QKV de la capa 0.
+- En el die y en el GPC, los SMs ocupados en la onda actual se encienden y los habilitados sin bloque se atenúan (sin draw calls de más: es el color por instancia). Las ondas se turnan con un reloj de la escena, una por pulso del flujo, hasta que la 6.2 las ate al playhead. La tarjeta muestra la onda, los SMs ocupados y, en la atención de decode, `requests × cabezas KV × splits = bloques` con una grilla de bloques.
 - Flujo HBM → L2 → SM → tensor core:
   - partículas instanciadas, un stream por clase de `phaseBreakdown.read` (pesos, KV, activaciones), cada una con su color;
   - cantidad y ancho de flujo en escala logarítmica de los bytes (brief §4.3);
@@ -275,7 +278,7 @@ Click o hover sobre un componente → panel con la prosa de `content/components/
 - Primer hito (brief §9): dos niveles (package y die) y un kernel animado con datos reales del plan.
 - Código en `web/src/flow/`: `flow.ts` (funciones puras: kernel, streams, rutas, posición sobre la ruta, formato) y `FlowLabel.tsx` (etiqueta en el DOM). `scene/Flow.tsx` dibuja las partículas en un solo `InstancedMesh`.
 - **El flujo corre en el nivel die** (ADR 0016).
-  - Rutas: todos los pares (controlador activo, GPC), por la mitad de L2 del lado del controlador. El último tramo baja desde un punto sobre el GPC hasta un SM habilitado ([ADR 0018](adr/0018-scene-labels-and-staged-flow.md)).
+  - Rutas: todos los pares (controlador activo, GPC), por la mitad de L2 del lado del controlador. El último tramo baja desde un punto sobre el GPC hasta un SM ocupado en la onda actual ([ADR 0018](adr/0018-scene-labels-and-staged-flow.md), ADR 0020); un GPC sin SMs ocupados no recibe ruta.
   - Se dibujan los tramos compartidos: controlador → mitad de L2 y mitad de L2 → GPC, en un solo `lineSegments`.
   - Las partículas viajan en ondas: hay un solo reloj y cada una tiene un desfasaje chico, así que el pulso entero está en un tramo a la vez. La etiqueta del DOM y las etiquetas del nivel resaltan el tramo actual. El tramo vive en un store propio (`flow/stage.ts`), que se escribe solo cuando cambia.
   - La etiqueta muestra `bytes.hbmRead` y su desglose. En la QKV a batch 1, L2 → SM supera a HBM en menos del 1 %: solo el vector de entrada (8 KB) se lee por CTA.

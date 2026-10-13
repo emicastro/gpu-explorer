@@ -9,6 +9,11 @@ interface PartsProps {
   placements: Placement[];
   materials: MaterialSet;
   onEnter: (id: string, instance: number) => void;
+  /**
+   * Overrides the palette color of an instanced part (the SMs a wave lights,
+   * task 5.3); undefined keeps it. Parts drawn alone ignore it.
+   */
+  colorOf?: ((p: Placement) => string | undefined) | undefined;
 }
 
 /** Parts a click can't act on skip the raycast entirely (ADR 0017). */
@@ -21,7 +26,7 @@ const noRaycast = () => undefined;
  * unless some of them can be entered (the SMs of a GPC): then the instance
  * under the pointer is the one entered.
  */
-function InstancedParts({ list, materials, onEnter }: PartsProps & { list: Placement[] }) {
+function InstancedParts({ list, materials, onEnter, colorOf }: PartsProps & { list: Placement[] }) {
   const mesh = useRef<InstancedMesh>(null);
   const first = list[0];
   useLayoutEffect(() => {
@@ -33,12 +38,12 @@ function InstancedParts({ list, materials, onEnter }: PartsProps & { list: Place
       dummy.position.set(...p.position);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);
-      m.setColorAt(i, color.set(partColor(p.kind, p.enabled)));
+      m.setColorAt(i, color.set(colorOf?.(p) ?? partColor(p.kind, p.enabled)));
     });
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
     m.computeBoundingSphere();
-  }, [list]);
+  }, [list, colorOf]);
   if (!first) return null;
   const events = list.some((p) => p.enterId !== null)
     ? {
@@ -62,12 +67,19 @@ function InstancedParts({ list, materials, onEnter }: PartsProps & { list: Place
 }
 
 /** Draws placements as beveled boxes; clicking one with an `enterId` enters it. */
-export function Parts({ placements, materials, onEnter }: PartsProps) {
+export function Parts({ placements, materials, onEnter, colorOf }: PartsProps) {
   const { instanced, single } = groupParts(placements);
   return (
     <>
       {instanced.map((list) => (
-        <InstancedParts key={list[0]?.kind} list={list} placements={placements} materials={materials} onEnter={onEnter} />
+        <InstancedParts
+          key={list[0]?.kind}
+          list={list}
+          placements={placements}
+          materials={materials}
+          onEnter={onEnter}
+          colorOf={colorOf}
+        />
       ))}
       {single.map((p) => {
         const { enterId } = p;

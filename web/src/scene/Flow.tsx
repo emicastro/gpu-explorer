@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 import { BufferGeometry, Color, Float32BufferAttribute, Object3D, type InstancedMesh } from 'three';
 import type { KernelPlan } from '../core/index.ts';
 import {
@@ -12,17 +12,22 @@ import {
   waveLeg,
 } from '../flow/flow.ts';
 import { useFlowStage } from '../flow/stage.ts';
+import { WAVE_SECONDS } from '../occupancy/wave.ts';
 import type { Placement } from './layout.ts';
 import { FLOW_COLORS, FLOW_PATH_COLOR } from './palette.ts';
 
-/** Seconds for one pulse from the HBM to a tensor core. */
-const LOOP_SECONDS = 4.5;
+/** Seconds for one pulse from the HBM to a tensor core: one wave's worth (ADR 0020). */
+const LOOP_SECONDS = WAVE_SECONDS;
 const PARTICLE_SIZE = 0.045;
 const PATH_OPACITY = 0.35;
 
 interface FlowProps {
   kernel: KernelPlan;
   dieParts: Placement[];
+  /** Keys of the SMs the current wave occupies: the only ones the pulse lands on. */
+  busy: Set<string>;
+  /** Seconds on the scene's wave clock, so a pulse starts when a wave does. */
+  clockRef: RefObject<number>;
 }
 
 /**
@@ -30,11 +35,10 @@ interface FlowProps {
  * as faint lines, and the particles in pulses along them, one leg at a time.
  * Two draw calls.
  */
-export function Flow({ kernel, dieParts }: FlowProps) {
+export function Flow({ kernel, dieParts, busy, clockRef }: FlowProps) {
   const mesh = useRef<InstancedMesh>(null);
-  const clock = useRef(0);
   const setLeg = useFlowStage((s) => s.setLeg);
-  const routes = useMemo(() => flowRoutes(dieParts), [dieParts]);
+  const routes = useMemo(() => flowRoutes(dieParts, busy), [dieParts, busy]);
   const particles = useMemo(
     () => flowParticles(flowStreams(kernel), routes.length),
     [kernel, routes],
@@ -57,11 +61,10 @@ export function Flow({ kernel, dieParts }: FlowProps) {
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   }, [particles]);
 
-  useFrame((_, delta) => {
+  useFrame(() => {
     const m = mesh.current;
     if (!m) return;
-    clock.current += delta;
-    const loop = clock.current / LOOP_SECONDS;
+    const loop = clockRef.current / LOOP_SECONDS;
     const leg = waveLeg(loop);
     if (useFlowStage.getState().leg !== leg) setLeg(leg);
     particles.forEach((p, i) => {

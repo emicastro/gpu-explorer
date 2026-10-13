@@ -60,11 +60,29 @@ body,
   color: #c9d1e0;
 }
 
-.flow-label {
+/* The flow label and the occupancy card stack on the right, clear of the die. */
+.hud-right {
   position: fixed;
   top: 12px;
   right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
   max-width: calc(100% - 32px);
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  pointer-events: none;
+}
+
+.hud-right > * {
+  box-sizing: border-box;
+  width: 320px;
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.flow-label {
   padding: 10px 14px;
   border-radius: 6px;
   background: rgb(18 21 30 / 85%);
@@ -256,4 +274,81 @@ body,
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+.occupancy-card {
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgb(18 21 30 / 85%);
+  font: 13px system-ui, sans-serif;
+  color: #c9d1e0;
+}
+
+.occupancy-card p {
+  margin: 0 0 4px;
+}
+
+.occupancy-card strong {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.occupancy-card h3 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7488;
+}
+
+.occupancy-picker {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+  color: #8b95a9;
+}
+
+.occupancy-picker select {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid #2a3142;
+  border-radius: 4px;
+  background: #12151e;
+  color: #c9d1e0;
+  font: inherit;
+}
+
+.occupancy-legend {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #8b95a9;
+}
+
+.occupancy-legend span {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.occupancy-grid {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0;
+}
+
+.occupancy-grid span {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.occupancy-note {
+  color: #8b95a9;
 }

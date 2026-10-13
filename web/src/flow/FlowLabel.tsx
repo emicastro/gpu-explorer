@@ -1,7 +1,8 @@
 import type { Quantity } from '../core/index.ts';
 import { FLOW_COLORS, type TrafficClass } from '../scene/palette.ts';
 import { useStore } from '../state/store.ts';
-import { FLOW_OP, FLOW_STAGES, findKernel, flowStreams, formatBytes, formatBytesShort } from './flow.ts';
+import { kernelLabel, kernelPlace, sceneKernel } from '../plan/kernels.ts';
+import { FLOW_STAGES, flowStreams, formatBytes, formatBytesShort } from './flow.ts';
 import { stopIsActive, useFlowStage } from './stage.ts';
 
 const CLASS_LABELS: Record<TrafficClass, string> = {
@@ -25,13 +26,14 @@ function Bytes({ q, testId }: { q: Quantity; testId?: string }) {
 export function FlowLabel() {
   const plan = useStore((s) => s.plan);
   const atDie = useStore((s) => s.path.length === 1 && s.from === null);
+  const ref = useStore((s) => s.sceneKernel);
   const leg = useFlowStage((s) => s.leg);
-  const kernel = plan && atDie ? findKernel(plan, FLOW_OP) : null;
+  const kernel = plan && atDie ? sceneKernel(plan, ref) : null;
   if (!kernel) return null;
   return (
     <aside className="flow-label" aria-label="Data flow">
       <p className="flow-kernel">
-        <code>{kernel.name}</code> · QKV projection · layer {String(kernel.layer)}
+        <code>{kernel.name}</code> · {kernelLabel(kernel)} · {kernelPlace(kernel)}
       </p>
       {/* The ends of the leg the pulse is on are lit (ADR 0018). */}
       <p className="flow-path" data-testid="flow-path" data-leg={leg === null ? '' : String(leg)}>

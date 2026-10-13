@@ -32,15 +32,18 @@ export const enabledInstances = (node: HwNode): number =>
 
 /** First node at `level` in depth-first order. Throws if the tree has none. */
 export function nodeAtLevel(root: HwNode, level: HwNode['level']): HwNode {
+  const found = firstAtLevel(root, level);
+  if (!found) throw new Error(`hardware tree has no ${level} node`);
+  return found;
+}
+
+function firstAtLevel(root: HwNode, level: HwNode['level']): HwNode | null {
   if (root.level === level) return root;
-  for (const child of root.children) {
-    try {
-      return nodeAtLevel(child, level);
-    } catch {
-      // not in this subtree
-    }
+  for (const c of root.children) {
+    const found = firstAtLevel(c, level);
+    if (found) return found;
   }
-  throw new Error(`hardware tree has no ${level} node`);
+  return null;
 }
 
 /** The node with this id; ids are unique across the tree. */
@@ -78,6 +81,10 @@ export type { Frame } from '../nav/camera.ts';
 /** Every level's plate is this wide in its own units; the depth follows the tile it covers. */
 export const PLATE_WIDTH = 4.2;
 
+/** The `key` of a placement: unique within one layout. */
+export const placementKey = (kind: PartKind, nodeId: string, instance: number): string =>
+  `${kind}:${nodeId}#${String(instance)}`;
+
 function part(
   kind: PartKind,
   nodeId: string,
@@ -88,7 +95,7 @@ function part(
   enterable = false,
 ): Placement {
   return {
-    key: `${kind}:${nodeId}#${String(instance)}`,
+    key: placementKey(kind, nodeId, instance),
     kind,
     nodeId,
     instance,

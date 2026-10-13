@@ -1,5 +1,6 @@
 import { create, type StateCreator } from 'zustand';
 import { INITIAL_NAV, navReduce, type NavEvent } from '../nav/machine.ts';
+import { DEFAULT_KERNEL } from '../plan/kernels.ts';
 import type { Scenario } from '../generated/Scenario.ts';
 import type {
   Evaluate,
@@ -76,6 +77,8 @@ const playbackSlice: Slice<PlaybackSlice> = (set) => ({
   speed: 1,
   timeMode: 'didactic',
   playing: false,
+  sceneKernel: DEFAULT_KERNEL,
+  setSceneKernel: (sceneKernel) => { set({ sceneKernel }); },
   setPlayhead: (playhead) => { set({ playhead }); },
   setSpeed: (speed) => { set({ speed }); },
   setTimeMode: (timeMode) => { set({ timeMode }); },

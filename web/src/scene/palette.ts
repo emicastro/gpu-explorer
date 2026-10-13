@@ -82,11 +82,21 @@ const channels = (hex: string): number[] => [1, 3, 5].map((i) => parseInt(hex.sl
 const BACKGROUND = channels(SCENE_BACKGROUND);
 /** How much of a disabled part's color survives (the rest is background). */
 const DISABLED_KEEP = 0.3;
+/** How much of an idle SM's color survives: dimmer than a busy one, brighter than a fused-off one. */
+const IDLE_KEEP = 0.6;
 
-/** Mixes `hex` toward the background; used for disabled parts. */
-function dim(hex: string): string {
-  const mixed = channels(hex).map((c, i) => Math.round((c * DISABLED_KEEP) + (BACKGROUND[i] ?? 0) * (1 - DISABLED_KEEP)));
+/** Mixes `hex` toward the background, keeping `keep` of it. */
+function dim(hex: string, keep = DISABLED_KEEP): string {
+  const mixed = channels(hex).map((c, i) => Math.round((c * keep) + (BACKGROUND[i] ?? 0) * (1 - keep)));
   return `#${mixed.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** An SM with a block of the scene's kernel in the current wave (task 5.3): lit. */
+export const SM_BUSY_COLOR = '#b8dcff';
+
+/** The color of an enabled SM while a kernel runs: lit if it holds a block, dimmed if idle. */
+export function smOccupancyColor(busy: boolean): string {
+  return busy ? SM_BUSY_COLOR : dim(PART_COLORS.sm, IDLE_KEEP);
 }
 
 /** The color of a part; disabled parts are dimmed, not hidden (R8). */

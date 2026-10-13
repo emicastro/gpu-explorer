@@ -3,24 +3,15 @@
 //
 // At the die level the HBM has no geometry: the particles leave from the
 // active memory controllers, the HBM's door into the die, cross the L2 half on
-// their side and land on an SM, where the tensor cores live (no geometry for
-// those until task 5.1). They travel in pulses, one leg at a time (ADR 0018).
-// Every GPC gets particles; task 5.3 narrows them to the SMs the wave occupies.
-import type { KernelPlan, Quantity, StepPlan } from '../core/index.ts';
-import type { OpKind } from '../generated/OpKind.ts';
+// their side and land on an SM, where the tensor cores live. They travel in
+// pulses, one leg at a time (ADR 0018), and land only on the SMs the current
+// wave occupies (ADR 0020).
+import type { KernelPlan, Quantity } from '../core/index.ts';
 import type { Placement, Vec3 } from '../scene/layout.ts';
 import type { TrafficClass } from '../scene/palette.ts';
 
 /** The stops of a read, in order. Each leg between two stops takes the same time. */
 export const FLOW_STAGES = ['HBM', 'L2', 'SM', 'Tensor core'] as const;
-
-/** The op whose kernel the milestone animates (task 4.4); task 6.2 follows the playhead instead. */
-export const FLOW_OP: OpKind = 'qkv_proj';
-
-/** The first kernel that runs `op` in `layer` (null: before and after the layers). */
-export function findKernel(plan: StepPlan, op: OpKind, layer: number | null = 0): KernelPlan | null {
-  return plan.kernels.find((k) => k.ops.some((o) => o.kind === op && o.layer === layer)) ?? null;
-}
 
 // Bytes per kernel span KB to GB (brief §4.3); the scale maps that range to 0..1.
 const FLOOR_BYTES = 1e3;
@@ -91,18 +82,22 @@ const insideXZ = (p: Placement, box: Placement): boolean =>
  * From a hub above the GPC the last leg drops onto one of its enabled SMs,
  * toward the tensor cores (ADR 0018). Controllers take turns over a GPC's SMs,
  * so the landings spread over the GPC.
+ *
+ * With `busy` (placement keys), only those SMs are landed on, and a GPC with
+ * none of them gets no route: the bytes go where the wave's blocks are (ADR 0020).
  */
-export function flowRoutes(dieParts: Placement[]): Route[] {
+export function flowRoutes(dieParts: Placement[], busy?: Set<string>): Route[] {
   const controllers = dieParts.filter((p) => p.kind === 'memory-controller' && p.enabled);
   const halves = dieParts.filter((p) => p.kind === 'l2');
   const gpcs = dieParts.filter((p) => p.kind === 'gpc');
-  const sms = dieParts.filter((p) => p.kind === 'sm' && p.enabled);
+  const sms = dieParts.filter((p) => p.kind === 'sm' && p.enabled && (!busy || busy.has(p.key)));
   const routes: Route[] = [];
   controllers.forEach((mc, c) => {
     const half = halves.find((h) => Math.sign(h.position[0]) === Math.sign(mc.position[0]));
     if (!half) throw new Error(`no L2 half on the side of ${mc.key}`);
     for (const gpc of gpcs) {
       const own = sms.filter((sm) => insideXZ(sm, gpc));
+      if (busy && own.length === 0) continue;
       const sm = own[(c * 7) % own.length];
       if (!sm) throw new Error(`${gpc.key} has no enabled SM`);
       routes.push([top(mc, MC_LIFT), top(half, L2_LIFT), top(gpc, HUB_LIFT), top(sm, 0)]);

@@ -5,7 +5,6 @@ import { layoutDie, nodeAtLevel, type Placement } from '../scene/layout.ts';
 import { toScenario, DEFAULT_SCENARIO } from '../state/store.ts';
 import {
   arrivalScale,
-  findKernel,
   flowParticles,
   flowPaths,
   flowRoutes,
@@ -23,6 +22,7 @@ import {
   waveLeg,
 } from './flow.ts';
 import { stopIsActive } from './stage.ts';
+import { findKernel } from '../plan/kernels.ts';
 
 let plan: StepPlan;
 let qkv: KernelPlan;

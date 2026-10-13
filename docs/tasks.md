@@ -78,14 +78,14 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
   Check: `cd web && pnpm test layout && pnpm e2e navigation`
 - [x] **5.2 Panel de componente.** El panel muestra la prosa (con un stub de contenido hasta 8.1), las `specs` y "qué hace el LLM acá" según el kernel actual. Un e2e abre el panel de un SM. (R9; §6.4)
   Check: `cd web && pnpm test panel && pnpm e2e panel`
-- [ ] **5.3 Ocupación por onda y lección de split-KV.** `smOccupancy` y resaltado de SMs por onda en los niveles die y GPC; para la atención, splits y bloques visibles. Tests: SMs ocupados = `per_wave[i]` acotado a 132; un e2e en decode a batch 1 y 8k ve 104 SMs ocupados en el kernel de atención. (R11; §6.6)
+- [x] **5.3 Ocupación por onda y lección de split-KV.** `smOccupancy` y resaltado de SMs por onda en los niveles die y GPC; para la atención, splits y bloques visibles. Tests: SMs ocupados = `per_wave[i]` acotado a 132; un e2e en decode a batch 1 y 8k ve 104 SMs ocupados en el kernel de atención. De paso: `nodeAtLevel` (`scene/layout.ts`) deja de usar `try/catch` como control de flujo. ([ADR 0020](adr/0020-sm-order-and-scene-kernel.md); R11; §6.6)
   Check: `cd web && pnpm test occupancy && pnpm e2e splitkv`
 
 ## 6. Reproducción del paso
 
 - [ ] **6.1 Constructor de línea de tiempo.** `buildTimeline(plan, mode, focusLayer)`: modo didáctico con duración mínima, modo tiempo real proporcional, capas comprimidas y expandibles, marcas de capa. Solo tests unitarios. (R10; §6.5)
   Check: `cd web && pnpm test timeline`
-- [ ] **6.2 Controles y sincronía con la escena.** Play, pausa, scrub y velocidad; el playhead en el store; la escena anima el kernel bajo el playhead. Un e2e hace scrub hasta la capa 3 y verifica el kernel activo. (R10; §6.5)
+- [ ] **6.2 Controles y sincronía con la escena.** Play, pausa, scrub y velocidad; el playhead en el store; la escena anima el kernel bajo el playhead: el playhead escribe `sceneKernel` (ADR 0020), que ya leen la escena, `FlowLabel` y el panel, y la onda de los SMs sigue al playhead en vez del reloj de la escena. El selector de kernel de la tarjeta de ocupación pasa a mover el playhead, o se quita. Un e2e hace scrub hasta la capa 3 y verifica el kernel activo. (R10; §6.5)
   Check: `cd web && pnpm test playback && pnpm e2e playback`
 
 ## 7. Perillas y vistas vinculadas
