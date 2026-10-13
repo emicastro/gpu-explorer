@@ -1,7 +1,7 @@
 ---
 id: kv-cache
 name: "KV cache"
-short: "The attention keys and values of earlier tokens, kept in HBM so they are not recomputed. It grows with layers, KV heads, context length and batch."
+short: "The attention keys and values of earlier tokens, kept in [[hbm]] so they are not recomputed. It grows with layers, KV heads, context length and batch."
 related: ["gqa", "hbm", "decode", "prefill"]
 sources: []
 ---

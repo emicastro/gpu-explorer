@@ -1,8 +1,7 @@
-import { useId, useReducer, type KeyboardEvent } from 'react';
 import type { Quantity } from '../generated/Quantity.ts';
+import { TipBox, useTip } from '../tooltip/Tip.tsx';
 import { Dot } from './Dot.tsx';
 import { quantityText } from './format.ts';
-import { isOpen, POPOVER_CLOSED, popoverReducer } from './popover.ts';
 
 interface QProps {
   value: Quantity;
@@ -10,7 +9,7 @@ interface QProps {
   compact?: boolean;
   /** Goes on the element that holds the main text, for tests. */
   testId?: string;
-  /** Start with the popover open (tests render it without a DOM). */
+  /** Render the popover open (tests render it without a DOM). */
   open?: boolean;
 }
 
@@ -32,38 +31,21 @@ export function QSources({ value }: { value: Quantity }) {
 
 /**
  * The one component that shows a quantity (design §6.9, R16): the number with
- * its unit, a confidence dot, and on hover or focus its sources. Escape or
- * leaving closes the popover; while it is open Escape does not also go up a
- * level of the machine.
+ * its unit, a confidence dot, and on hover or focus its sources in a tooltip
+ * of the shared stack (R15, task 8.2). Escape closes it before the level goes up.
  */
-export function Q({ value, compact, testId, open: initiallyOpen }: QProps) {
-  const [state, dispatch] = useReducer(popoverReducer, initiallyOpen ? { ...POPOVER_CLOSED, focus: true } : POPOVER_CLOSED);
-  const id = useId();
-  const open = isOpen(state);
+export function Q({ value, compact, testId, open: forcedOpen }: QProps) {
+  const tip = useTip(forcedOpen);
   const { main, aside } = quantityText(value, compact);
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || !open) return;
-    e.stopPropagation();
-    dispatch('escape');
-  };
   return (
-    <span
-      className="q"
-      tabIndex={0}
-      aria-describedby={open ? id : undefined}
-      onMouseEnter={() => { dispatch('enter'); }}
-      onMouseLeave={() => { dispatch('leave'); }}
-      onFocus={() => { dispatch('focus'); }}
-      onBlur={() => { dispatch('blur'); }}
-      onKeyDown={onKeyDown}
-    >
+    <span className="q" tabIndex={0} data-tip-trigger aria-describedby={tip.open ? `tip-${tip.id}` : undefined} {...tip.props}>
       <span className="q-main" data-testid={testId}>{main}</span>
       {aside && <span className="q-aside"> {aside}</span>}
       <Dot confidence={value.confidence} />
-      {open && (
-        <span className="q-popover" role="tooltip" id={id}>
+      {tip.open && (
+        <TipBox tip={tip}>
           <QSources value={value} />
-        </span>
+        </TipBox>
       )}
     </span>
   );

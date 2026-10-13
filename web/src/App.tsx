@@ -11,9 +11,12 @@ import { OccupancyCard } from './occupancy/OccupancyCard.tsx';
 import { HbmBar } from './linked/HbmBar.tsx';
 import { Roofline } from './linked/Roofline.tsx';
 import { configQuantity } from './quantity/config.ts';
+import { SceneTip } from './tooltip/SceneTip.tsx';
+import { useTipKeys } from './tooltip/Tip.tsx';
 import { Scene } from './scene/Scene.tsx';
 
 export function App({ hardware, model }: { hardware: HwNode; model: ModelConfig }) {
+  useTipKeys();
   useNavigationKeys();
   usePlaybackDriver();
   return (
@@ -30,6 +33,7 @@ export function App({ hardware, model }: { hardware: HwNode; model: ModelConfig 
       </div>
       <Transport />
       <LevelNote />
+      <SceneTip hardware={hardware} />
     </>
   );
 }

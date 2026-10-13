@@ -1,7 +1,7 @@
 ---
 id: decode
 name: "Decode"
-short: "The phase that produces one new token per request per step. It reads all the weights to make few tokens, so it is usually memory-bound."
+short: "The phase that produces one new token per request per step. It reads all the weights and the [[kv-cache]] to make few tokens, so it is usually memory-bound."
 related: ["prefill", "kv-cache", "lower-bound"]
 sources: []
 ---

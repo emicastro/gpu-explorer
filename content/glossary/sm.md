@@ -1,7 +1,7 @@
 ---
 id: sm
 name: "Streaming multiprocessor (SM)"
-short: "The replicated compute unit of the GPU. It runs thread blocks and holds sub-partitions, shared memory and tensor cores."
+short: "The replicated compute unit of the GPU. It runs [[thread-block|thread blocks]] and holds sub-partitions, shared memory and tensor cores."
 related: ["thread-block", "warp", "shared-memory", "tpc"]
 sources: ["NVIDIA H100 Tensor Core GPU Architecture whitepaper"]
 ---

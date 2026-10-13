@@ -1,6 +1,5 @@
-// Renders parsed content (`markdown.ts`). A `[[id]]` shows as a marked term;
-// the tooltip stack of task 8.2 attaches to `.term` through its `data-term`.
-import { content } from './index.ts';
+// Renders parsed content (`markdown.ts`). A `[[id]]` is a `<Term>` with its tooltip.
+import { Term } from '../tooltip/Term.tsx';
 import type { Block, Inline } from './markdown.ts';
 
 export function InlineText({ nodes }: { nodes: Inline[] }) {
@@ -17,25 +16,32 @@ export function InlineText({ nodes }: { nodes: Inline[] }) {
           case 'strong':
             return <strong key={i}><InlineText nodes={n.children} /></strong>;
           case 'term':
-            return <span key={i} className="term" data-term={n.id}>{n.label ?? content.glossary.get(n.id)?.name ?? n.id}</span>;
+            return <Term key={i} id={n.id} label={n.label} />;
         }
       })}
     </>
   );
 }
 
-export function Prose({ blocks }: { blocks: Block[] }) {
+/**
+ * The blocks as paragraphs and lists. Inside a tooltip, which sits in the middle
+ * of a paragraph, `phrasing` draws them as block-looking spans instead, because
+ * a `<p>` can't be inside a `<p>`.
+ */
+export function Prose({ blocks, phrasing }: { blocks: Block[]; phrasing?: boolean }) {
   return (
     <>
-      {blocks.map((b, i) =>
-        b.kind === 'paragraph' ? (
-          <p key={i}><InlineText nodes={b.children} /></p>
-        ) : (
-          <ul key={i}>
-            {b.items.map((item, j) => <li key={j}><InlineText nodes={item} /></li>)}
-          </ul>
-        ),
-      )}
+      {blocks.map((b, i) => {
+        if (b.kind === 'paragraph') {
+          return phrasing ? (
+            <span key={i} className="prose-p"><InlineText nodes={b.children} /></span>
+          ) : (
+            <p key={i}><InlineText nodes={b.children} /></p>
+          );
+        }
+        const items = b.items.map((item, j) => (phrasing ? <span key={j} className="prose-li">• <InlineText nodes={item} /></span> : <li key={j}><InlineText nodes={item} /></li>));
+        return phrasing ? <span key={i} className="prose-p">{items}</span> : <ul key={i}>{items}</ul>;
+      })}
     </>
   );
 }

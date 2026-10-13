@@ -5,7 +5,6 @@ import type { Quantity } from '../generated/Quantity.ts';
 import { worstConfidence } from './confidence.ts';
 import { formatQuantity } from './format.ts';
 import { Num } from './Num.tsx';
-import { isOpen, POPOVER_CLOSED, popoverReducer, type PopoverEvent, type PopoverState } from './popover.ts';
 import { Q } from './Q.tsx';
 
 const q = (over: Partial<Quantity> = {}): Quantity => ({
@@ -52,28 +51,5 @@ describe('quantity indicator', () => {
   it('the worst confidence wins', () => {
     expect(worstConfidence(['documented', 'estimated', 'simplified'])).toBe('estimated');
     expect(worstConfidence([])).toBe('documented');
-  });
-});
-
-describe('quantity popover', () => {
-  const run = (events: PopoverEvent[]): PopoverState => events.reduce(popoverReducer, POPOVER_CLOSED);
-
-  it('opens with focus or hover', () => {
-    expect(isOpen(run(['focus']))).toBe(true);
-    expect(isOpen(run(['enter']))).toBe(true);
-    expect(isOpen(POPOVER_CLOSED)).toBe(false);
-  });
-
-  it('closes with Escape, and stays closed until pointer and focus are gone', () => {
-    const closed = run(['focus', 'escape']);
-    expect(isOpen(closed)).toBe(false);
-    expect(isOpen(popoverReducer(closed, 'enter'))).toBe(false);
-    expect(isOpen(run(['focus', 'escape', 'blur', 'focus']))).toBe(true);
-  });
-
-  it('closes on blur and on leave, but only when neither is left', () => {
-    expect(isOpen(run(['focus', 'blur']))).toBe(false);
-    expect(isOpen(run(['enter', 'focus', 'leave']))).toBe(true);
-    expect(isOpen(run(['enter', 'leave']))).toBe(false);
   });
 });

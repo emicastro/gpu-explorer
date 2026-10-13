@@ -114,7 +114,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 - [x] **8.1 Pipeline de contenido.** Parser de frontmatter y renderer de `[[id]]`; `content/glossary/` sembrado desde `docs/GLOSSARY.md` (traducido al inglés); `content/components/` con una entrada por nodo del árbol de hardware; el panel de componente lee de ahí (`proseFor` en `panel/facts.ts` deja de devolver el stub). Test de contenido: links rotos, campos faltantes, componentes sin prosa y huérfanos. (R9, R15; §7; ADR 0005)
   Check: `cd web && pnpm test content`
-- [ ] **8.2 Tooltips anidados.** Pila de tooltips; hover de 600 ms o foco; fijado con click o a los 1.5 s; anidados; Escape; el mismo componente en el 3D, sobre los componentes. Un e2e abre un tooltip y uno anidado con el mouse, y repite con el teclado. (R15; §7)
+- [x] **8.2 Tooltips anidados.** Pila de tooltips; hover de 600 ms o foco; fijado con click o a los 1.5 s; anidados; Escape; el mismo componente en el 3D, sobre los componentes. Un e2e abre un tooltip y uno anidado con el mouse, y repite con el teclado. (R15; §7)
   Check: `cd web && pnpm test tooltip && pnpm e2e tooltips`
 
 ## 9. Producto

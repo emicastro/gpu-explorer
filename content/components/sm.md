@@ -1,6 +1,6 @@
 ---
 id: sm
-does: "The unit that runs thread blocks. It holds the sub-partitions with the math units, the L1 cache and shared memory, and the TMA."
+does: "The unit that runs [[thread-block|thread blocks]]. It holds the sub-partitions with the math units, the L1 cache and shared memory, and the TMA."
 stores: "Registers, [[shared-memory]] and L1 cache: the working set of the [[thread-block|blocks]] it is running."
 ---
 

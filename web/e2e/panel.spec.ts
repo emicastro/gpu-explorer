@@ -78,8 +78,8 @@ test('a quantity opens its sources on focus and Escape closes them without leavi
   expect((await getStoreState(page)).path?.length).toBe(3);
 
   // Blur closes it too.
-  await page.keyboard.press('Shift+Tab');
-  await page.keyboard.press('Tab');
+  await value.blur();
+  await value.focus();
   await expect(panel.getByRole('tooltip')).toBeVisible();
   await value.blur();
   await expect(panel.getByRole('tooltip')).toHaveCount(0);

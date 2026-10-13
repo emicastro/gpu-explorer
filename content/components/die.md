@@ -1,6 +1,6 @@
 ---
 id: die
-does: "The silicon chip: the SMs, the L2 cache and the memory controllers, with the on-chip network that joins them."
+does: "The silicon chip: the [[sm|SMs]], the [[l2-cache|L2 cache]] and the memory controllers, with the on-chip network that joins them."
 stores: "Its [[l2-cache]] and, in each SM, registers and [[shared-memory]]. It has no bulk storage."
 ---
 

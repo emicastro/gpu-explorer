@@ -4,6 +4,7 @@ import { roundedBox } from './geometry.ts';
 import { groupParts, type Placement } from './layout.ts';
 import type { MaterialSet } from './materials.ts';
 import { partColor } from './palette.ts';
+import { useSceneHover } from '../tooltip/SceneTip.tsx';
 
 interface PartsProps {
   placements: Placement[];
@@ -15,6 +16,14 @@ interface PartsProps {
    */
   colorOf?: ((p: Placement) => string | undefined) | undefined;
 }
+
+/** Pointer events that tell the tooltip which part is under the pointer. */
+type HoverEvent = { clientX?: number; clientY?: number; nativeEvent?: { clientX: number; clientY: number } };
+const hoverOver = (nodeId: string, e: HoverEvent) => {
+  const n = e.nativeEvent;
+  useSceneHover.getState().set({ nodeId, x: n?.clientX ?? e.clientX ?? 0, y: n?.clientY ?? e.clientY ?? 0 });
+};
+const hoverOut = () => { useSceneHover.getState().set(null); };
 
 /** Parts a click can't act on skip the raycast entirely (ADR 0017). */
 const noRaycast = () => undefined;
@@ -51,8 +60,14 @@ function InstancedParts({ list, materials, onEnter, colorOf }: PartsProps & { li
           const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
           if (!hit?.enterId) return;
           e.stopPropagation();
+          hoverOut();
           onEnter(hit.enterId, hit.instance);
         },
+        onPointerMove: (e: HoverEvent & { instanceId?: number }) => {
+          const hit = e.instanceId === undefined ? undefined : list[e.instanceId];
+          if (hit?.enterId) hoverOver(hit.enterId, e);
+        },
+        onPointerOut: hoverOut,
       }
     : { raycast: noRaycast };
   // Geometry and material are shared: the mesh must not dispose them on unmount.
@@ -87,8 +102,11 @@ export function Parts({ placements, materials, onEnter, colorOf }: PartsProps) {
           ? {
               onClick: (e: { stopPropagation: () => void }) => {
                 e.stopPropagation();
+                hoverOut();
                 onEnter(enterId, p.instance);
               },
+              onPointerMove: (e: HoverEvent) => { hoverOver(enterId, e); },
+              onPointerOut: hoverOut,
             }
           : { raycast: noRaycast };
         return (
