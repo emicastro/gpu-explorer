@@ -8,6 +8,8 @@ export default defineConfig({
   // in 90 s) in about 1 full run in 2; 1 worker passed 3 of 3 in 4.1 min each.
   workers: 1,
   forbidOnly: !!process.env.CI,
+  // CI runners are slower than the dev machine that set the timeouts; one retry, visible in the report.
+  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
     baseURL: `http://localhost:${port}`,

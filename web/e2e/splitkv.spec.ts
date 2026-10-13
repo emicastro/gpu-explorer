@@ -2,6 +2,10 @@ import { expect, test } from '@playwright/test';
 import { timelineFor } from '../src/playback/playback.ts';
 import { getRenderInfo, getStoreState, setStoreState, waitForStore } from './helpers.ts';
 
+// The die's frames on software GL are fill-bound; a small canvas keeps the page responsive on a 4-core CI runner
+// (the first deploy run starved this page for 90 s at 1280x720).
+test.use({ viewport: { width: 1024, height: 640 } });
+
 test('decode attention at batch 1 and 8k lights 104 SMs: 8 KV heads × 13 splits', async ({ page }) => {
   test.setTimeout(90_000);
   const errors: string[] = [];
