@@ -36,6 +36,10 @@ provenance: SourceInfo, flops: Quantity, bytes: KernelBytes,
  */
 phaseBreakdown: PhaseBreakdown, intensity: Quantity, 
 /**
+ * FLOPs over the realistic time: the kernel's height on the roofline.
+ */
+attained: Quantity, 
+/**
  * Which roof limits the lower bound.
  */
 bound: Limit, 

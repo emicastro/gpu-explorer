@@ -4,7 +4,7 @@ import type { StepPlan } from '../generated/StepPlan.ts';
 export interface RoofPoint {
   /** Index into `plan.kernels`. */
   index: number;
-  /** FLOP/byte and FLOP/s. */
+  /** FLOP/byte and FLOP/s, both the core's (`intensity`, `attained`). */
   intensity: number;
   perf: number;
 }
@@ -13,8 +13,8 @@ export interface RoofPoint {
 export function roofPoints(plan: StepPlan): RoofPoint[] {
   const points: RoofPoint[] = [];
   plan.kernels.forEach((k, index) => {
-    const perf = k.flops.value / k.time.realistic.value;
-    if (k.intensity.value > 0 && perf > 0 && Number.isFinite(perf)) points.push({ index, intensity: k.intensity.value, perf });
+    const perf = k.attained.value;
+    if (k.intensity.value > 0 && perf > 0) points.push({ index, intensity: k.intensity.value, perf });
   });
   return points;
 }

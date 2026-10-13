@@ -58,6 +58,8 @@ pub struct KernelPlan {
     /// HBM bytes by origin, for the flow animation.
     pub phase_breakdown: PhaseBreakdown,
     pub intensity: Quantity,
+    /// FLOPs over the realistic time: the kernel's height on the roofline.
+    pub attained: Quantity,
     /// Which roof limits the lower bound.
     pub bound: Limit,
     /// The tensor-core peak the kernel is held to.
@@ -226,6 +228,7 @@ pub fn evaluate(hw_id: &str, model_id: &str, scenario: &Scenario) -> Result<Step
                 write: traffic(&r.cost.write, &r.provenance),
             },
             intensity: Quantity::new(r.cost.intensity(), r.provenance.clone()),
+            attained: Quantity::new(r.cost.flops / t.realistic, r.provenance.join(&t.provenance)),
             bound: r.limit,
             precision: r.precision,
             time: kernel_times(r, t),
@@ -407,6 +410,30 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_attained_is_flops_over_the_realistic_time_under_the_roofs() {
+        let p = plan(&decode(1, 8192));
+        let bw = p.roofs.hbm_bandwidth.value();
+        let peak = p.roofs.bf16_peak.value();
+        for k in &p.kernels {
+            let attained = k.attained.value();
+            let want = k.flops.value() / k.time.realistic.value();
+            assert!((attained - want).abs() <= 1e-9 * want.max(1.0), "{}", k.id);
+            assert!(
+                attained <= peak.min(bw * k.intensity.value()) * 1.000_001,
+                "{}",
+                k.id
+            );
+            // As trusted as the worst of the FLOPs and the time.
+            assert!(k.attained.confidence() >= k.flops.confidence(), "{}", k.id);
+            assert!(
+                k.attained.confidence() >= k.time.realistic.confidence(),
+                "{}",
+                k.id
+            );
+        }
+    }
+
+    #[test]
     fn evaluate_128k_overflows_at_batch_64_not_at_1() {
         assert!(!plan(&decode(1, 131_072)).memory.overflow);
         assert!(plan(&decode(64, 131_072)).memory.overflow);
@@ -474,6 +501,7 @@ mod tests {
             "bytes",
             "phaseBreakdown",
             "intensity",
+            "attained",
             "bound",
             "precision",
             "time",
