@@ -92,7 +92,7 @@ Orden: los grupos 1 y 2 primero. Después, el núcleo (3) y el 3D (4) avanzan en
 
 - [x] **7.1 Panel de perillas.** Batch (log), contexto (log hasta 131072 con marca de YaRN), pesos (4 opciones; FP8 por bloques como FP8 por defecto), KV, fase y modo de tiempo. Cada cambio re-evalúa. Tests del store; un e2e mueve el contexto y verifica que cambia el KV en el plan. (R13; §6.8)
   Check: `cd web && pnpm test knobs && pnpm e2e knobs`
-- [ ] **7.2 Vista de línea de tiempo de kernels.** Barras por kernel con selección compartida; resaltado en el 3D. (R14; §6.8)
+- [x] **7.2 Vista de línea de tiempo de kernels.** Barras por kernel con selección compartida; resaltado en el 3D. (R14; §6.8)
   Check: `cd web && pnpm test selection && pnpm e2e timeline-view`
 - [ ] **7.3 Roofline y barra de HBM.** Roofline log-log en SVG con techos de BF16 y FP8 y un punto por kernel; barra de HBM con el batch máximo y overflow en rojo. Un e2e hace click en un kernel de la línea de tiempo y verifica el punto resaltado en el roofline; otro mueve el contexto y verifica que cambia la barra de HBM (el e2e de R13, que la 7.1 no puede hacer porque la barra todavía no existe). (R13, R14; §6.8)
   Check: `cd web && pnpm test roofline && pnpm e2e linked-views`

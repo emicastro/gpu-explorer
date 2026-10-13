@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { kernelLabel, kernelPlace } from '../plan/kernels.ts';
 import { useStore } from '../state/store.ts';
 import { layerMarks, totalDuration } from '../timeline/timeline.ts';
+import { KernelBars } from '../timeline/KernelBars.tsx';
 import { seekToLayer } from './driver.ts';
 import { kernelAt, SPEEDS, timelineFor } from './playback.ts';
 
@@ -52,6 +53,7 @@ export function Transport() {
         </div>
         <span className="transport-time">{playhead.toFixed(1)} / {total.toFixed(1)} s</span>
       </div>
+      <KernelBars />
       <div className="transport-row">
         <label>
           Speed{' '}
