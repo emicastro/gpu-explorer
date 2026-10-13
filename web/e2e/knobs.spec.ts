@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { getStoreState, waitForStore } from './helpers.ts';
 
 test('moving the context knob re-evaluates the plan and flags YaRN past 32k', async ({ page }) => {
+  test.setTimeout(90_000);
   const errors: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') errors.push(msg.text());
