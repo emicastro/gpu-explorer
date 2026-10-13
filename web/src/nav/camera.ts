@@ -18,13 +18,15 @@ export const OVERVIEW_POSE: Pose = { position: [2.3, 2.3, 2.3], target: [0, 0, 0
  * The resting camera of each level below the package, in the level's own
  * units (ADR 0019): looking at the center of its plate from the front and
  * above. Index 0 is the die; the plates differ in depth, so the farther ones
- * stand back a little.
+ * stand back a little. The GPC and the sub-partition look a little to the
+ * right of their center, which moves the plate left on screen: their labels
+ * hang beside the plate, and the right ones must clear the HUD column.
  */
 const LOCAL_VIEWS: readonly Pose[] = [
   { position: [0, 3.4, 3.4], target: [0, 0, 0] },
-  { position: [0, 4.6, 4.6], target: [0, 0, 0] },
+  { position: [0.7, 4.6, 4.6], target: [0.7, 0, 0] },
   { position: [0, 3.2, 3.2], target: [0, 0, 0] },
-  { position: [0, 3.8, 3.8], target: [0, 0, 0] },
+  { position: [0.7, 3.8, 3.8], target: [0.7, 0, 0] },
 ];
 
 export interface Frame {

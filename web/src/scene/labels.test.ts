@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { hardware, initCoreSync, type HwNode } from '../core/index.ts';
 import { FLOW_STAGES } from '../flow/flow.ts';
 import { levelLabels, type SceneLabel } from './labels.ts';
-import { findNode, layoutDie, layoutGpc, layoutPackage, layoutSm, layoutSubpartition, nodeAtLevel } from './layout.ts';
+import { findNode, layoutDie, layoutGpc, layoutPackage, layoutSm, layoutSubpartition, nodeAtLevel, type Placement } from './layout.ts';
 
 let root: HwNode;
 
@@ -106,5 +106,43 @@ describe('label confidence (ADR 0022)', () => {
     const sub = levelLabels(layoutSubpartition(findNode(root, 'gpc-8tpc'), findNode(root, 'gpc-8tpc/tpc/sm/subpartition')), root, 'subpartition');
     expect(byKind(sub, 'fp32-core')?.confidence).toBe('documented');
     expect(byKind(sub, 'tensor-core')?.confidence).toBeNull();
+  });
+});
+
+describe('labels beside what they name (9.2)', () => {
+  const g = 'gpc-8tpc';
+
+  /** Whether the label's anchor falls on the footprint of any part of its kind. */
+  const onAPart = (labels: SceneLabel[], placements: Placement[], kind: SceneLabel['kind']): boolean => {
+    const label = byKind(labels, kind);
+    if (!label) throw new Error(`no ${kind} label`);
+    return placements.some((c) => c.kind === kind
+      && Math.abs(label.anchor[0] - c.position[0]) < c.size[0] / 2 - 1e-6
+      && Math.abs(label.anchor[2] - c.position[2]) < c.size[2] / 2 - 1e-6);
+  };
+
+  it('put the core labels outside the core grids, not on a core', () => {
+    const sub = findNode(root, `${g}/tpc/sm/subpartition`);
+    const placements = layoutSubpartition(findNode(root, g), sub);
+    const labels = levelLabels(placements, root, 'subpartition');
+    for (const kind of ['fp32-core', 'int32-core', 'fp64-core', 'ld-st'] as const) {
+      expect(onAPart(labels, placements, kind), kind).toBe(false);
+    }
+    expect(byKind(labels, 'fp32-core')?.align).toBe('end');
+    expect(byKind(labels, 'ld-st')?.align).toBe('start');
+  });
+
+  it('put the SM and TPC labels beside the GPC\'s tiles, on opposite sides', () => {
+    const placements = layoutGpc(findNode(root, g));
+    const labels = levelLabels(placements, root, 'gpc');
+    expect(onAPart(labels, placements, 'sm')).toBe(false);
+    expect(onAPart(labels, placements, 'tpc')).toBe(false);
+    expect(byKind(labels, 'sm')?.align).toBe('end');
+    expect(byKind(labels, 'tpc')?.align).toBe('start');
+  });
+
+  it('keep the die-level SM label where it was', () => {
+    const labels = levelLabels(layoutDie(nodeAtLevel(root, 'die')), root, 'die');
+    expect(byKind(labels, 'sm')?.align).toBe('center');
   });
 });

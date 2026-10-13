@@ -19,6 +19,8 @@ export interface SceneLabel {
    * label with no count.
    */
   confidence: Confidence | null;
+  /** Which side of the anchor the text extends to: `start` to the right, `end` to the left. */
+  align: 'center' | 'start' | 'end';
 }
 
 /** The nodes from `root` down to `id`, both included; empty if `id` is not in the tree. */
@@ -59,7 +61,25 @@ function countConfidence(tree: HwNode, placements: Placement[], parts: Placement
 }
 
 /** Which part of the kind the label hangs from, and where on it. */
-type Anchor = 'first-top' | 'front-most-top' | 'last-front' | 'front-gpc-tiles' | 'front-edge';
+type Anchor =
+  | 'first-top' | 'front-most-top' | 'last-front' | 'front-gpc-tiles' | 'front-edge'
+  | 'left-edge' | 'right-edge';
+
+/**
+ * Where a level moves a kind's label so it doesn't cover the part it names: a
+ * level of cores or tiles has no free spot on top, so the label hangs beside
+ * the group, on the side edge of its first row, with the text running away
+ * from the group.
+ */
+const BESIDE: Partial<Record<PartKind, Partial<Record<PartKind, 'left-edge' | 'right-edge'>>>> = {
+  gpc: { sm: 'left-edge', tpc: 'right-edge' },
+  subpartition: {
+    'fp32-core': 'left-edge',
+    'int32-core': 'right-edge',
+    'fp64-core': 'right-edge',
+    'ld-st': 'right-edge',
+  },
+};
 
 interface LabelSpec {
   name: string;
@@ -129,6 +149,17 @@ function anchorOf(parts: Placement[], anchor: Anchor): Vec3 {
     }
     case 'last-front':
       return [last.position[0], topOf(last), last.position[2] + last.size[2] / 2];
+    case 'left-edge':
+    case 'right-edge': {
+      // The group's first row (back-most parts), at the group's outer x.
+      const row = Math.min(...parts.map((p) => p.position[2]));
+      const inRow = parts.filter((p) => Math.abs(p.position[2] - row) < 1e-6);
+      const xs = anchor === 'left-edge'
+        ? Math.min(...parts.map((p) => p.position[0] - p.size[0] / 2))
+        : Math.max(...parts.map((p) => p.position[0] + p.size[0] / 2));
+      const top = Math.max(...inRow.map(topOf));
+      return [xs, top, row];
+    }
     case 'front-edge':
       return [first.position[0] - first.size[0] * 0.3, topOf(first), first.position[2] + first.size[2] / 2];
   }
@@ -149,7 +180,8 @@ export function levelLabels(placements: Placement[], tree: HwNode, own?: PartKin
     // No label for the thing the camera is inside.
     if (!spec || kind === own) continue;
     let anchored = parts;
-    if (spec.anchor === 'front-gpc-tiles') {
+    const anchor = (own && BESIDE[own]?.[kind]) ?? spec.anchor;
+    if (anchor === 'front-gpc-tiles') {
       // The front-left GPC's tiles, from the middle one on.
       const gpc = frontMost(placements.filter((p) => p.kind === 'gpc'));
       const own = gpc ? parts.filter((p) => insideXZ(p, gpc)) : parts;
@@ -162,7 +194,8 @@ export function levelLabels(placements: Placement[], tree: HwNode, own?: PartKin
     out.push({
       kind,
       text: words.join(' '),
-      anchor: anchorOf(anchored, spec.anchor),
+      anchor: anchorOf(anchored, anchor),
+      align: anchor === 'left-edge' ? 'end' : anchor === 'right-edge' ? 'start' : 'center',
       stop: spec.stop,
       confidence: spec.counted ? countConfidence(tree, placements, parts) : null,
     });

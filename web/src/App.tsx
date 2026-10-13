@@ -13,6 +13,7 @@ import { Roofline } from './linked/Roofline.tsx';
 import { configQuantity } from './quantity/config.ts';
 import { SceneTip } from './tooltip/SceneTip.tsx';
 import { useTipKeys } from './tooltip/Tip.tsx';
+import { SmallScreenNotice } from './product/SmallScreenNotice.tsx';
 import { Scene } from './scene/Scene.tsx';
 
 export function App({ hardware, model }: { hardware: HwNode; model: ModelConfig }) {
@@ -34,6 +35,7 @@ export function App({ hardware, model }: { hardware: HwNode; model: ModelConfig 
       <Transport />
       <LevelNote />
       <SceneTip hardware={hardware} />
+      <SmallScreenNotice />
     </>
   );
 }

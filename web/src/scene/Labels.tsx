@@ -91,7 +91,9 @@ export function Labels({ tree, placements, own, show, frame }: LabelsProps) {
       const x = ((v.x + 1) / 2) * size.width;
       const y = ((1 - v.y) / 2) * size.height;
       span.style.visibility = v.z > 1 ? 'hidden' : 'visible';
-      span.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+      // A label beside its group starts a few pixels off the edge and runs away from it.
+      const shift = l.align === 'center' ? '-50%, -50%' : l.align === 'end' ? 'calc(-100% - 8px), -50%' : '8px, -50%';
+      span.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(${shift})`;
     });
   });
 

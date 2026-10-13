@@ -618,3 +618,42 @@ body,
 .roof-point-memory { fill: #3f6fb5; }
 .roof-point-compute { fill: #c98a3a; }
 .roof-point-selected { fill: #f2f5fb; stroke: #f2f5fb; opacity: 1; }
+
+.small-screen-notice {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  z-index: 10;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border: 1px solid #8a6d1d;
+  border-radius: 6px;
+  background: rgb(40 32 12 / 92%);
+  font: 13px system-ui, sans-serif;
+  color: #f1dc9b;
+  pointer-events: none;
+}
+
+.fatal-error {
+  max-width: 560px;
+  margin: 15vh auto 0;
+  padding: 0 16px;
+  font: 15px system-ui, sans-serif;
+  color: #c9d1e0;
+}
+
+.fatal-error h1 {
+  font-size: 20px;
+  color: #fff;
+}
+
+.fatal-error pre {
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #12151e;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
